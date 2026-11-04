@@ -7,6 +7,7 @@ use key_core::config::{Config, Position};
 use key_core::{hook, DisplayItem, DisplayKind, Platform, Update};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
 pub fn get_overlay_state(app: AppHandle) -> OverlayState {
@@ -114,6 +115,40 @@ pub fn request_permission() {
 #[tauri::command]
 pub fn open_privacy_settings() {
     windows::open_privacy_settings();
+}
+
+/// 設定をファイルに書き出す（C-05）。キャンセル時は `None`。
+#[tauri::command]
+pub async fn export_config(app: AppHandle) -> Result<Option<String>, String> {
+    let state = app.state::<AppState>();
+    let tr = state.strings();
+    let json = state.config().to_export(&app.package_info().version.to_string());
+    let Some(path) = app
+        .dialog()
+        .file()
+        .add_filter("JSON", &["json"])
+        .set_file_name("key_hyouji-settings.json")
+        .blocking_save_file()
+    else {
+        return Ok(None);
+    };
+    let path = path.into_path().map_err(|e| format!("{}: {e}", tr.err_export))?;
+    std::fs::write(&path, json).map_err(|e| format!("{}: {e}", tr.err_export))?;
+    Ok(Some(path.display().to_string()))
+}
+
+/// ファイルから設定を読み込んで反映する（C-05）。キャンセル時は `None`。
+#[tauri::command]
+pub async fn import_config(app: AppHandle) -> Result<Option<Config>, String> {
+    let state = app.state::<AppState>();
+    let tr = state.strings();
+    let Some(path) = app.dialog().file().add_filter("JSON", &["json"]).blocking_pick_file() else {
+        return Ok(None);
+    };
+    let path = path.into_path().map_err(|e| format!("{}: {e}", tr.err_import))?;
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", tr.err_import))?;
+    let config = Config::from_export(&text, &state.config()).map_err(|e| format!("{}: {e}", tr.err_import))?;
+    state::apply_config(&app, config).map(Some)
 }
 
 /// 画面に使う言語（"ja" / "en"）。

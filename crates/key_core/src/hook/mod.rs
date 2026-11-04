@@ -3,7 +3,7 @@
 //! どの OS でも「キーダウン（修飾キーは押下時）」だけを [`KeyEvent`] として送る。
 //! 受け取ったキー入力はチャネルに流すだけで、保存・送信は一切しない（P-01）。
 
-use crate::event::KeyEvent;
+use crate::event::InputEvent;
 use std::fmt;
 use std::sync::mpsc::Sender;
 
@@ -44,8 +44,15 @@ impl std::error::Error for HookError {}
 ///
 /// 失敗した場合はスレッドは残らないので、権限付与後などに再度呼び出せる。
 /// 成功後に再度呼ぶとエラーになる。
-pub fn start(sink: Sender<KeyEvent>) -> Result<(), HookError> {
+pub fn start(sink: Sender<InputEvent>) -> Result<(), HookError> {
     imp::start(sink)
+}
+
+/// マウスクリックの取得を有効 / 無効にする（F-10）。
+/// Windows は低レベルマウスフックを付け外しする（無効時はマウス移動の負荷をかけない）。
+/// macOS はクリックのみを受け取るので常に有効で、この設定で通知を止める。
+pub fn set_mouse_enabled(enabled: bool) {
+    imp::set_mouse_enabled(enabled)
 }
 
 /// キー入力の取得に必要な権限があるか（macOS 以外は常に true）。

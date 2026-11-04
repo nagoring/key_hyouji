@@ -1,7 +1,7 @@
 //! macOS: CGEventTap（listen-only）。「入力監視」権限が必要。
 
 use super::HookError;
-use crate::event::{Key, KeyEvent, Modifiers, NamedKey};
+use crate::event::{InputEvent, Key, KeyEvent, Modifiers, MouseButton, MouseEvent, NamedKey};
 use std::ffi::c_void;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
@@ -14,6 +14,13 @@ type CFRunLoopSourceRef = *mut c_void;
 type CFRunLoopRef = *mut c_void;
 type CGEventRef = *mut c_void;
 type CGEventTapProxy = *mut c_void;
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CGPoint {
+    x: f64,
+    y: f64,
+}
+
 type CGEventTapCallBack =
     unsafe extern "C" fn(CGEventTapProxy, u32, CGEventRef, *mut c_void) -> CGEventRef;
 
@@ -30,6 +37,7 @@ extern "C" {
     fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
     fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
     fn CGEventGetFlags(event: CGEventRef) -> u64;
+    fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
     fn CGEventKeyboardGetUnicodeString(
         event: CGEventRef,
         max_len: usize,
@@ -57,6 +65,10 @@ const K_CG_SESSION_EVENT_TAP: u32 = 1;
 const K_CG_HEAD_INSERT_EVENT_TAP: u32 = 0;
 const K_CG_EVENT_TAP_OPTION_LISTEN_ONLY: u32 = 1;
 
+const K_CG_EVENT_LEFT_MOUSE_DOWN: u32 = 1;
+const K_CG_EVENT_RIGHT_MOUSE_DOWN: u32 = 3;
+const K_CG_EVENT_OTHER_MOUSE_DOWN: u32 = 25;
+const K_CG_MOUSE_EVENT_BUTTON_NUMBER: u32 = 3;
 const K_CG_EVENT_KEY_DOWN: u32 = 10;
 const K_CG_EVENT_FLAGS_CHANGED: u32 = 12;
 const K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
@@ -69,7 +81,12 @@ const FLAG_CONTROL: u64 = 1 << 18;
 const FLAG_ALTERNATE: u64 = 1 << 19;
 const FLAG_COMMAND: u64 = 1 << 20;
 
-static SINK: OnceLock<Sender<KeyEvent>> = OnceLock::new();
+static SINK: OnceLock<Sender<InputEvent>> = OnceLock::new();
+static MOUSE: AtomicBool = AtomicBool::new(false);
+
+pub fn set_mouse_enabled(enabled: bool) {
+    MOUSE.store(enabled, Ordering::SeqCst);
+}
 static TAP: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 static STARTED: AtomicBool = AtomicBool::new(false);
 
@@ -83,7 +100,7 @@ pub fn request_permission() {
     }
 }
 
-pub fn start(sink: Sender<KeyEvent>) -> Result<(), HookError> {
+pub fn start(sink: Sender<InputEvent>) -> Result<(), HookError> {
     if STARTED.swap(true, Ordering::SeqCst) {
         return Err(HookError::Failed("hook already started".into()));
     }
@@ -93,7 +110,12 @@ pub fn start(sink: Sender<KeyEvent>) -> Result<(), HookError> {
     thread::Builder::new()
         .name("key-hook".into())
         .spawn(move || unsafe {
-            let mask = (1u64 << K_CG_EVENT_KEY_DOWN) | (1u64 << K_CG_EVENT_FLAGS_CHANGED);
+            // マウスはボタン押下のみ（移動は受け取らない）
+            let mask = (1u64 << K_CG_EVENT_KEY_DOWN)
+                | (1u64 << K_CG_EVENT_FLAGS_CHANGED)
+                | (1u64 << K_CG_EVENT_LEFT_MOUSE_DOWN)
+                | (1u64 << K_CG_EVENT_RIGHT_MOUSE_DOWN)
+                | (1u64 << K_CG_EVENT_OTHER_MOUSE_DOWN);
             let tap = CGEventTapCreate(
                 K_CG_SESSION_EVENT_TAP,
                 K_CG_HEAD_INSERT_EVENT_TAP,
@@ -146,7 +168,16 @@ unsafe extern "C" fn tap_callback(
         K_CG_EVENT_KEY_DOWN | K_CG_EVENT_FLAGS_CHANGED => {
             if let Some(ev) = translate(ty, event) {
                 if let Some(sink) = SINK.get() {
-                    let _ = sink.send(ev);
+                    let _ = sink.send(InputEvent::Key(ev));
+                }
+            }
+        }
+        K_CG_EVENT_LEFT_MOUSE_DOWN | K_CG_EVENT_RIGHT_MOUSE_DOWN | K_CG_EVENT_OTHER_MOUSE_DOWN
+            if MOUSE.load(Ordering::Relaxed) =>
+        {
+            if let Some(ev) = translate_mouse(ty, event) {
+                if let Some(sink) = SINK.get() {
+                    let _ = sink.send(InputEvent::Mouse(ev));
                 }
             }
         }
@@ -162,6 +193,18 @@ fn modifiers_from_flags(flags: u64) -> Modifiers {
         shift: flags & FLAG_SHIFT != 0,
         meta: flags & FLAG_COMMAND != 0,
     }
+}
+
+unsafe fn translate_mouse(ty: u32, event: CGEventRef) -> Option<MouseEvent> {
+    let button = match ty {
+        K_CG_EVENT_LEFT_MOUSE_DOWN => MouseButton::Left,
+        K_CG_EVENT_RIGHT_MOUSE_DOWN => MouseButton::Right,
+        // その他のボタンは中ボタン（番号 2）のみ
+        _ if CGEventGetIntegerValueField(event, K_CG_MOUSE_EVENT_BUTTON_NUMBER) == 2 => MouseButton::Middle,
+        _ => return None,
+    };
+    let p = CGEventGetLocation(event);
+    Some(MouseEvent { button, x: p.x, y: p.y, modifiers: modifiers_from_flags(CGEventGetFlags(event)) })
 }
 
 unsafe fn event_string(event: CGEventRef) -> Option<String> {

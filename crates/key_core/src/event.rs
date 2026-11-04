@@ -88,3 +88,29 @@ impl KeyEvent {
         Self { key, text: text.map(str::to_owned), modifiers }
     }
 }
+
+/// マウスボタン（F-10）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+}
+
+/// マウスボタンの押下。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MouseEvent {
+    pub button: MouseButton,
+    /// 押した位置。Windows は物理ピクセル、macOS はポイント（どちらもメイン画面左上が原点）
+    pub x: f64,
+    pub y: f64,
+    pub modifiers: Modifiers,
+}
+
+/// フックから届く入力。
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputEvent {
+    Key(KeyEvent),
+    Mouse(MouseEvent),
+}

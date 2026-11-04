@@ -144,6 +144,16 @@ function render() {
   $<HTMLInputElement>("offsetX").value = String(config.offsetX);
   $<HTMLInputElement>("offsetY").value = String(config.offsetY);
 
+  // マウス
+  $<HTMLInputElement>("showClicks").checked = config.mouse.showClicks;
+  $<HTMLInputElement>("showRing").checked = config.mouse.showRing;
+  $<HTMLInputElement>("ringColor").value = config.mouse.ringColor.slice(0, 7);
+  $<HTMLInputElement>("ringColor").disabled = !config.mouse.showRing;
+
+  // 配信用モード
+  $<HTMLInputElement>("chromaEnabled").checked = config.chromaKey.enabled;
+  $<HTMLInputElement>("chromaColor").value = config.chromaKey.color.slice(0, 7);
+
   // プライバシー
   $<HTMLInputElement>("maskPassword").checked = config.maskPasswordFields;
   $<HTMLInputElement>("secureIndicator").checked = config.showSecureIndicator;
@@ -369,6 +379,25 @@ function renderPlatformTexts() {
   $("maskPasswordWrap").hidden = mac;
 }
 
+function setupMouse() {
+  $<HTMLInputElement>("showClicks").addEventListener("change", (e) =>
+    change((c) => (c.mouse.showClicks = (e.target as HTMLInputElement).checked), true),
+  );
+  $<HTMLInputElement>("showRing").addEventListener("change", (e) => {
+    change((c) => (c.mouse.showRing = (e.target as HTMLInputElement).checked), true);
+    $<HTMLInputElement>("ringColor").disabled = !config.mouse.showRing;
+  });
+  $<HTMLInputElement>("ringColor").addEventListener("input", (e) =>
+    change((c) => (c.mouse.ringColor = (e.target as HTMLInputElement).value)),
+  );
+  $<HTMLInputElement>("chromaEnabled").addEventListener("change", (e) =>
+    change((c) => (c.chromaKey.enabled = (e.target as HTMLInputElement).checked), true),
+  );
+  $<HTMLInputElement>("chromaColor").addEventListener("input", (e) =>
+    change((c) => (c.chromaKey.color = (e.target as HTMLInputElement).value)),
+  );
+}
+
 function setupPrivacy() {
   $<HTMLInputElement>("maskPassword").addEventListener("change", (e) =>
     change((c) => (c.maskPasswordFields = (e.target as HTMLInputElement).checked), true),
@@ -458,6 +487,27 @@ function setupHotkey() {
 function setupAbout() {
   $("version").textContent = info.version;
   $("configPath").textContent = info.configPath;
+  $("exportConfig").addEventListener("click", async () => {
+    try {
+      const path = await invoke<string | null>("export_config");
+      if (path) toast(t("about.exported") + path, true);
+    } catch (e) {
+      toast(String(e));
+    }
+  });
+  $("importConfig").addEventListener("click", async () => {
+    try {
+      const imported = await invoke<Config | null>("import_config");
+      if (imported) {
+        config = imported;
+        await renderMonitors();
+        render();
+        toast(t("about.imported"), true);
+      }
+    } catch (e) {
+      toast(String(e));
+    }
+  });
   $("resetAll").addEventListener("click", async () => {
     if (!confirm(t("about.resetConfirm"))) return;
     config = await invoke<Config>("reset_config");
@@ -488,6 +538,7 @@ async function main() {
   setupGeneral();
   setupAppearance();
   setupPosition();
+  setupMouse();
   setupPrivacy();
   setupHotkey();
   setupAbout();

@@ -7,7 +7,7 @@
 //!
 //! 何件まで表示するか・いつ消すかはフロントエンド側の責務。
 
-use crate::event::{Key, KeyEvent, NamedKey};
+use crate::event::{Key, KeyEvent, Modifiers, MouseButton, NamedKey};
 use crate::format::{self, ModifierStyle, Platform};
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +32,8 @@ pub struct AggregatorConfig {
     pub show_modifier_only: bool,
     pub platform: Platform,
     pub modifier_style: ModifierStyle,
+    /// クリックの表示名（左 / 右 / 中）。言語に合わせてアプリ側で設定する
+    pub click_labels: [String; 3],
 }
 
 impl Default for AggregatorConfig {
@@ -44,6 +46,7 @@ impl Default for AggregatorConfig {
             show_modifier_only: false,
             platform: Platform::current(),
             modifier_style: ModifierStyle::Symbol,
+            click_labels: ["Click".into(), "Right Click".into(), "Middle Click".into()],
         }
     }
 }
@@ -129,6 +132,22 @@ impl Aggregator {
             return None;
         }
         let label = format::combo_label(&ev.key, ev.modifiers, self.config.platform, self.config.modifier_style);
+        Some(self.combo(label, now_ms))
+    }
+
+    /// マウスクリックを処理する（F-10）。同じクリックの連続は回数を加算（ダブルクリックは ×2）。
+    pub fn push_click(&mut self, button: MouseButton, modifiers: Modifiers, now_ms: u64) -> Option<Update> {
+        if self.config.display_mode == DisplayMode::ShortcutsOnly && !modifiers.has_command() {
+            self.last = None;
+            return None;
+        }
+        let idx = match button {
+            MouseButton::Left => 0,
+            MouseButton::Right => 1,
+            MouseButton::Middle => 2,
+        };
+        let key = Key::Unknown(self.config.click_labels[idx].clone());
+        let label = format::combo_label(&key, modifiers, self.config.platform, self.config.modifier_style);
         Some(self.combo(label, now_ms))
     }
 
@@ -299,6 +318,23 @@ mod tests {
         assert_eq!(label(&a.push(&cmd("s"), 30).unwrap()), ("new", 1, "⌘ S", 1));
         let shift_tab = KeyEvent::new(Key::Named(NamedKey::Tab), None, Modifiers { shift: true, ..Modifiers::NONE });
         assert_eq!(label(&a.push(&shift_tab, 40).unwrap()), ("new", 2, "⇧ ⇥", 1));
+    }
+
+    #[test]
+    fn clicks() {
+        let mut a = Aggregator::new(cfg(Platform::Windows));
+        a.push(&ch("a"), 0);
+        assert_eq!(label(&a.push_click(MouseButton::Left, Modifiers::NONE, 10).unwrap()), ("new", 2, "Click", 1));
+        assert_eq!(label(&a.push_click(MouseButton::Left, Modifiers::NONE, 200).unwrap()), ("update", 2, "Click", 2));
+        let ctrl = Modifiers { ctrl: true, ..Modifiers::NONE };
+        assert_eq!(label(&a.push_click(MouseButton::Right, ctrl, 300).unwrap()), ("new", 3, "Ctrl + Right Click", 1));
+        // クリックの後の文字入力は新しいアイテム
+        assert_eq!(label(&a.push(&ch("b"), 400).unwrap()), ("new", 4, "b", 1));
+
+        let mut s = Aggregator::new(AggregatorConfig { display_mode: DisplayMode::ShortcutsOnly, ..cfg(Platform::Mac) });
+        assert!(s.push_click(MouseButton::Left, Modifiers::NONE, 0).is_none());
+        let cmd = Modifiers { meta: true, ..Modifiers::NONE };
+        assert_eq!(label(&s.push_click(MouseButton::Left, cmd, 10).unwrap()), ("new", 1, "⌘ Click", 1));
     }
 
     #[test]

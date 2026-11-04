@@ -53,6 +53,8 @@ export type Config = {
   imeMode: "hide" | "show";
   autoStart: boolean;
   language: "auto" | "ja" | "en";
+  mouse: { showClicks: boolean; showRing: boolean; ringColor: string };
+  chromaKey: { enabled: boolean; color: string };
 };
 
 export type HookStatus =

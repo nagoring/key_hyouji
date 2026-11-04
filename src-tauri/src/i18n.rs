@@ -21,6 +21,9 @@ pub struct Strings {
     pub err_hotkey_parse: &'static str,
     pub err_hotkey_register: &'static str,
     pub err_autostart: &'static str,
+    pub err_import: &'static str,
+    pub err_export: &'static str,
+    pub clicks: [&'static str; 3],
     presets: [&'static str; 9],
     paren: (&'static str, &'static str),
 }
@@ -55,6 +58,9 @@ const JA: Strings = Strings {
     err_hotkey_parse: "ホットキーを解釈できません",
     err_hotkey_register: "ホットキーを登録できません（他のアプリが使用中の可能性）",
     err_autostart: "自動起動を設定できません",
+    err_import: "設定ファイルを読み込めません",
+    err_export: "設定ファイルを保存できません",
+    clicks: ["クリック", "右クリック", "中クリック"],
     paren: ("（", "）"),
     presets: ["左上", "上中央", "右上", "左中央", "中央", "右中央", "左下", "下中央", "右下"],
 };
@@ -77,6 +83,9 @@ const EN: Strings = Strings {
     err_hotkey_parse: "Invalid hotkey",
     err_hotkey_register: "Could not register the hotkey (it may be used by another app)",
     err_autostart: "Could not configure launch at login",
+    err_import: "Could not read the settings file",
+    err_export: "Could not save the settings file",
+    clicks: ["Click", "Right Click", "Middle Click"],
     paren: (" (", ")"),
     presets: [
         "Top left", "Top center", "Top right", "Middle left", "Center", "Middle right", "Bottom left",

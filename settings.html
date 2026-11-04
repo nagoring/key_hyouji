@@ -11,6 +11,7 @@
       <button data-tab="general" class="active" data-i18n="tab.general"></button>
       <button data-tab="appearance" data-i18n="tab.appearance"></button>
       <button data-tab="position" data-i18n="tab.position"></button>
+      <button data-tab="mouse" data-i18n="tab.mouse"></button>
       <button data-tab="privacy" data-i18n="tab.privacy"></button>
       <button data-tab="hotkey" data-i18n="tab.hotkey"></button>
       <button data-tab="about" data-i18n="tab.about"></button>
@@ -146,6 +147,16 @@
           <div class="control"><label class="check"><input id="shadow" type="checkbox" /> <span data-i18n="appearance.shadowLabel"></span></label></div>
         </div>
         <div class="row">
+          <label for="chromaEnabled" data-i18n="chroma.title"></label>
+          <div class="control">
+            <label class="check"><input id="chromaEnabled" type="checkbox" /> <span data-i18n="chroma.label"></span></label>
+            <div class="inline" style="margin-top: 8px">
+              <label><span data-i18n="chroma.color"></span> <input id="chromaColor" type="color" /></label>
+            </div>
+            <p class="hint" data-i18n="chroma.hint"></p>
+          </div>
+        </div>
+        <div class="row">
           <label for="animation" data-i18n="appearance.animation"></label>
           <div class="control">
             <select id="animation">
@@ -153,6 +164,28 @@
               <option value="slide" data-i18n="appearance.animSlide"></option>
               <option value="none" data-i18n="appearance.animNone"></option>
             </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- マウス -->
+      <section id="tab-mouse" class="tab">
+        <h1 data-i18n="tab.mouse"></h1>
+        <div class="row">
+          <label for="showClicks" data-i18n="mouse.clicks"></label>
+          <div class="control">
+            <label class="check"><input id="showClicks" type="checkbox" /> <span data-i18n="mouse.clicksLabel"></span></label>
+            <p class="hint" data-i18n="mouse.clicksHint"></p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="showRing" data-i18n="mouse.ring"></label>
+          <div class="control">
+            <label class="check"><input id="showRing" type="checkbox" /> <span data-i18n="mouse.ringLabel"></span></label>
+            <div class="inline" style="margin-top: 8px">
+              <label><span data-i18n="mouse.ringColor"></span> <input id="ringColor" type="color" /></label>
+            </div>
+            <p class="hint" data-i18n="mouse.ringHint"></p>
           </div>
         </div>
       </section>
@@ -257,6 +290,16 @@
           <dt data-i18n="about.configFile"></dt><dd><code id="configPath"></code></dd>
           <dt data-i18n="about.license"></dt><dd>MIT</dd>
         </dl>
+        <div class="row">
+          <label data-i18n="about.backup"></label>
+          <div class="control">
+            <div class="inline">
+              <button id="exportConfig" class="secondary" data-i18n="about.export"></button>
+              <button id="importConfig" class="secondary" data-i18n="about.import"></button>
+            </div>
+            <p class="hint" data-i18n="about.backupHint"></p>
+          </div>
+        </div>
         <button id="resetAll" class="danger" data-i18n="about.resetAll"></button>
         <p class="hint" data-i18n="about.resetHint"></p>
       </section>

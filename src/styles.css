@@ -96,6 +96,12 @@ body {
     0 0 10px rgba(0, 0, 0, 0.6);
 }
 
+/* 配信用モード: 影はクロマキーの縁が汚れるので消す */
+[data-chroma="true"] .key {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
 /* アニメーション */
 [data-animation="slide"] .key {
   animation: slide-in 160ms ease-out;

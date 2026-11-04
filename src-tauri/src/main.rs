@@ -4,6 +4,7 @@
 mod commands;
 mod i18n;
 mod overlay;
+mod ring;
 mod state;
 mod tray;
 mod windows;
@@ -11,7 +12,7 @@ mod windows;
 use key_core::config::{Config, ImeMode};
 use key_core::hook::{self, HookError};
 use key_core::aggregator::is_typing;
-use key_core::{Aggregator, DisplayItem, DisplayKind, KeyEvent, Update};
+use key_core::{Aggregator, DisplayItem, DisplayKind, InputEvent, Update};
 use state::{AppState, HookStatus};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
@@ -26,6 +27,7 @@ const SECURE_ITEM_ID: u64 = u64::MAX - 1;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -52,6 +54,8 @@ fn main() {
             commands::request_permission,
             commands::open_privacy_settings,
             commands::get_language,
+            commands::export_config,
+            commands::import_config,
             commands::restart_app,
         ])
         .setup(|app| {
@@ -60,8 +64,11 @@ fn main() {
 
             let config_dir = app.path().app_config_dir()?;
             let config = Config::load(&config_dir).sanitized();
-            let aggregator = Aggregator::new(config.aggregator_config());
-            app.manage(AppState::new(config_dir, config, aggregator));
+            let mouse_enabled = config.mouse.show_clicks || config.mouse.show_ring;
+            let state = AppState::new(config_dir, config.clone(), Aggregator::new(config.aggregator_config()));
+            state.aggregator.lock().unwrap().set_config(state.aggregator_config(&config));
+            app.manage(state);
+            key_core::hook::set_mouse_enabled(mouse_enabled);
 
             let window = app
                 .get_webview_window(OVERLAY)
@@ -72,6 +79,9 @@ fn main() {
             window.show()?;
 
             tray::create(app.handle())?;
+            if let Err(e) = ring::create(app.handle()) {
+                log::warn!("failed to create click ring window: {e}");
+            }
             state::register_initial_hotkey(app.handle());
             overlay::spawn_follow(app.handle().clone());
             spawn_secure_input_watch(app.handle().clone());
@@ -91,7 +101,7 @@ fn main() {
                 windows::open_onboarding(app.handle());
             }
 
-            let (tx, rx) = channel::<KeyEvent>();
+            let (tx, rx) = channel::<InputEvent>();
             spawn_pipeline(app.handle().clone(), rx);
             spawn_hook(app.handle().clone(), tx);
             Ok(())
@@ -109,12 +119,12 @@ fn main() {
 }
 
 /// フックから届いたキーイベントを表示アイテムに変換してオーバーレイへ送る。
-fn spawn_pipeline(app: AppHandle, rx: Receiver<KeyEvent>) {
+fn spawn_pipeline(app: AppHandle, rx: Receiver<InputEvent>) {
     thread::Builder::new()
         .name("key-pipeline".into())
         .spawn(move || {
             let started = Instant::now();
-            for ev in rx {
+            for input in rx {
                 let state = app.state::<AppState>();
                 if state.is_paused() {
                     continue;
@@ -123,6 +133,23 @@ fn spawn_pipeline(app: AppHandle, rx: Receiver<KeyEvent>) {
                     state.aggregator.lock().unwrap().reset();
                     continue;
                 }
+                let ev = match input {
+                    InputEvent::Key(ev) => ev,
+                    InputEvent::Mouse(m) => {
+                        let mouse = state.config().mouse;
+                        if mouse.show_clicks {
+                            let now_ms = started.elapsed().as_millis() as u64;
+                            let update = state.aggregator.lock().unwrap().push_click(m.button, m.modifiers, now_ms);
+                            if let Some(update) = update {
+                                let _ = app.emit_to(OVERLAY, "keystroke", update);
+                            }
+                        }
+                        if mouse.show_ring {
+                            ring::show(&app, &m);
+                        }
+                        continue;
+                    }
+                };
                 let (mask_password, show_indicator) = {
                     let c = state.config.lock().unwrap();
                     (c.mask_password_fields, c.show_secure_indicator)
@@ -174,7 +201,7 @@ fn spawn_secure_input_watch(app: AppHandle) {
 }
 
 /// キーフックを開始する。macOS で権限が無い場合は許可されるまで再試行する。
-fn spawn_hook(app: AppHandle, tx: Sender<KeyEvent>) {
+fn spawn_hook(app: AppHandle, tx: Sender<InputEvent>) {
     thread::Builder::new()
         .name("key-hook-starter".into())
         .spawn(move || {

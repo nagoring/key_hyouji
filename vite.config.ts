@@ -17,6 +17,7 @@ export default defineConfig({
         overlay: "index.html",
         settings: "settings.html",
         onboarding: "onboarding.html",
+        ring: "ring.html",
       },
     },
     target: process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari15",

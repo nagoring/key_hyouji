@@ -41,6 +41,7 @@ pub struct Settings {
     pub fade_duration_ms: u64,
     pub max_items: u32,
     pub theme: key_core::config::Theme,
+    pub chroma_key: key_core::config::ChromaKey,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,6 +95,16 @@ impl AppState {
         i18n::strings(self.language())
     }
 
+    /// 集約ロジックの設定（クリックの表示名は言語に合わせる）。
+    pub fn aggregator_config(&self, config: &Config) -> key_core::AggregatorConfig {
+        let lang = config.language.resolve(self.os_locale.as_deref());
+        let clicks = i18n::strings(lang).clicks;
+        key_core::AggregatorConfig {
+            click_labels: clicks.map(str::to_owned),
+            ..config.aggregator_config()
+        }
+    }
+
     pub fn config(&self) -> Config {
         self.config.lock().unwrap().clone()
     }
@@ -126,6 +137,7 @@ impl AppState {
             fade_duration_ms: c.fade_duration_ms,
             max_items: c.max_items,
             theme: c.theme.clone(),
+            chroma_key: c.chroma_key.clone(),
         }
     }
 
@@ -260,7 +272,10 @@ pub fn apply_config(app: &AppHandle, new: Config) -> Result<Config, String> {
         *c = new.clone();
         c.save(&s.config_dir);
     }
-    s.aggregator.lock().unwrap().set_config(new.aggregator_config());
+    s.aggregator.lock().unwrap().set_config(s.aggregator_config(&new));
+    if new.mouse != old.mouse {
+        key_core::hook::set_mouse_enabled(new.mouse.show_clicks || new.mouse.show_ring);
+    }
     *s.foreground.lock().unwrap() = None;
 
     let geometry_changed = new.position != old.position

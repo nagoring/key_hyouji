@@ -1,8 +1,9 @@
 //! Windows: 低レベルキーボードフック（WH_KEYBOARD_LL）。
 
 use super::HookError;
-use crate::event::{Key, KeyEvent, Modifiers, NamedKey};
-use std::sync::atomic::{AtomicBool, Ordering};
+use crate::event::{InputEvent, Key, KeyEvent, Modifiers, MouseButton, MouseEvent, NamedKey};
+use std::cell::Cell;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{sync_channel, Sender};
 use std::sync::OnceLock;
 use std::thread;
@@ -16,14 +17,51 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_PRIOR, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT, VK_SNAPSHOT,
     VK_SPACE, VK_TAB, VK_UP,
 };
+use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
-    SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HC_ACTION, KBDLLHOOKSTRUCT, MSG,
-    WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
+    PostThreadMessageW, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HC_ACTION, HHOOK,
+    KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_APP, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
 };
 
-static SINK: OnceLock<Sender<KeyEvent>> = OnceLock::new();
+static SINK: OnceLock<Sender<InputEvent>> = OnceLock::new();
 static STARTED: AtomicBool = AtomicBool::new(false);
+/// マウスフックを付けたいか（フックスレッド起動前に設定された場合も反映する）
+static MOUSE_WANTED: AtomicBool = AtomicBool::new(false);
+/// フックスレッドの ID（マウスフックの付け外しを依頼する）
+static HOOK_THREAD: AtomicU32 = AtomicU32::new(0);
+const WM_APP_MOUSE: u32 = WM_APP + 1;
+
+thread_local! {
+    static MOUSE_HOOK: Cell<Option<HHOOK>> = const { Cell::new(None) };
+}
+
+pub fn set_mouse_enabled(enabled: bool) {
+    MOUSE_WANTED.store(enabled, Ordering::SeqCst);
+    let tid = HOOK_THREAD.load(Ordering::SeqCst);
+    if tid != 0 {
+        unsafe {
+            let _ = PostThreadMessageW(tid, WM_APP_MOUSE, WPARAM(0), LPARAM(0));
+        }
+    }
+}
+
+/// フックスレッド上で、MOUSE_WANTED に合わせてマウスフックを付け外しする。
+unsafe fn sync_mouse_hook(hmod: Option<HINSTANCE>) {
+    let want = MOUSE_WANTED.load(Ordering::SeqCst);
+    MOUSE_HOOK.with(|cell| match (want, cell.get()) {
+        (true, None) => match SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), hmod, 0) {
+            Ok(h) => cell.set(Some(h)),
+            Err(e) => log::warn!("failed to install mouse hook: {e}"),
+        },
+        (false, Some(h)) => {
+            let _ = UnhookWindowsHookEx(h);
+            cell.set(None);
+        }
+        _ => {}
+    });
+}
 
 // OEM 系の日本語キー（windows クレートに定数が無い / 名前が環境で異なるため数値で持つ）
 const VK_OEM_ATTN: u16 = 0xF0; // 英数（JIS の CapsLock 位置）
@@ -32,7 +70,7 @@ const VK_OEM_ENLW: u16 = 0xF4; // 半角/全角
 const VK_PROCESSKEY: u16 = 0xE5;
 const VK_PACKET: u16 = 0xE7;
 
-pub fn start(sink: Sender<KeyEvent>) -> Result<(), HookError> {
+pub fn start(sink: Sender<InputEvent>) -> Result<(), HookError> {
     if STARTED.swap(true, Ordering::SeqCst) {
         return Err(HookError::Failed("hook already started".into()));
     }
@@ -53,12 +91,20 @@ pub fn start(sink: Sender<KeyEvent>) -> Result<(), HookError> {
                     return;
                 }
             };
+            HOOK_THREAD.store(GetCurrentThreadId(), Ordering::SeqCst);
+            sync_mouse_hook(hmod);
             // LL フックはインストールしたスレッドのメッセージループで呼ばれる
             let mut msg = MSG::default();
             while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                if msg.hwnd.0.is_null() && msg.message == WM_APP_MOUSE {
+                    sync_mouse_hook(hmod);
+                    continue;
+                }
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
+            MOUSE_WANTED.store(false, Ordering::SeqCst);
+            sync_mouse_hook(hmod);
             let _ = UnhookWindowsHookEx(hook);
         })
         .map_err(|e| HookError::Failed(e.to_string()))?;
@@ -85,8 +131,28 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
             let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
             if let Some(ev) = translate(kb) {
                 if let Some(sink) = SINK.get() {
-                    let _ = sink.send(ev);
+                    let _ = sink.send(InputEvent::Key(ev));
                 }
+            }
+        }
+    }
+    CallNextHookEx(None, code, wparam, lparam)
+}
+
+/// マウスの LL フック。移動のたびに呼ばれるので、ボタン押下以外は即座に返す。
+unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code == HC_ACTION as i32 {
+        let button = match wparam.0 as u32 {
+            WM_LBUTTONDOWN => Some(MouseButton::Left),
+            WM_RBUTTONDOWN => Some(MouseButton::Right),
+            WM_MBUTTONDOWN => Some(MouseButton::Middle),
+            _ => None,
+        };
+        if let Some(button) = button {
+            let ms = &*(lparam.0 as *const MSLLHOOKSTRUCT);
+            let ev = MouseEvent { button, x: ms.pt.x as f64, y: ms.pt.y as f64, modifiers: current_modifiers() };
+            if let Some(sink) = SINK.get() {
+                let _ = sink.send(InputEvent::Mouse(ev));
             }
         }
     }

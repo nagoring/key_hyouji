@@ -207,6 +207,37 @@ pub enum ImeMode {
     Show,
 }
 
+/// マウスクリックの表示（F-10）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MouseConfig {
+    /// クリックをキーと同じ場所に表示
+    pub show_clicks: bool,
+    /// クリックした位置にリングを表示
+    pub show_ring: bool,
+    pub ring_color: String,
+}
+
+impl Default for MouseConfig {
+    fn default() -> Self {
+        Self { show_clicks: false, show_ring: false, ring_color: "#ffcc00".into() }
+    }
+}
+
+/// 配信用モード（2.3）。オーバーレイの背景を単色にしてクロマキーで抜けるようにする。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ChromaKey {
+    pub enabled: bool,
+    pub color: String,
+}
+
+impl Default for ChromaKey {
+    fn default() -> Self {
+        Self { enabled: false, color: "#00ff00".into() }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
@@ -235,9 +266,12 @@ pub struct Config {
     /// ログイン時に自動起動（C-04）
     pub auto_start: bool,
     pub language: Language,
+    pub mouse: MouseConfig,
+    pub chroma_key: ChromaKey,
 }
 
 pub const DEFAULT_PAUSE_HOTKEY: &str = "Control+Alt+Shift+KeyK";
+const EXPORT_APP: &str = "key_hyouji";
 
 impl Default for Config {
     fn default() -> Self {
@@ -261,6 +295,8 @@ impl Default for Config {
             ime_mode: ImeMode::Hide,
             auto_start: false,
             language: Language::Auto,
+            mouse: MouseConfig::default(),
+            chroma_key: ChromaKey::default(),
         }
     }
 }
@@ -321,6 +357,13 @@ impl Config {
                 *v = def.clone();
             }
         }
+        if !is_hex_color(&self.mouse.ring_color) {
+            self.mouse.ring_color = MouseConfig::default().ring_color;
+        }
+        if !is_hex_color(&self.chroma_key.color) {
+            self.chroma_key.color = ChromaKey::default().color;
+        }
+        let t = &mut self.theme;
         // フォント名は CSS に入るので安全な文字だけ許可
         let font_ok = !t.font_family.trim().is_empty()
             && t.font_family.len() <= 200
@@ -340,6 +383,34 @@ impl Config {
             self.pause_hotkey = d.pause_hotkey;
         }
         self
+    }
+
+    /// エクスポートしたファイル（`{"app": ..., "config": {...}}` または設定そのもの）を読み込む（C-05）。
+    /// 自動起動は PC ごとの設定なので取り込まない。
+    pub fn from_export(json: &str, current: &Config) -> Result<Config, String> {
+        let value: serde_json::Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+        let body = match value.get("config") {
+            Some(c) if value.get("app").and_then(|a| a.as_str()) == Some(EXPORT_APP) => c.clone(),
+            _ => value,
+        };
+        if !body.is_object() {
+            return Err("not a settings object".into());
+        }
+        let mut config: Config = serde_json::from_value(body).map_err(|e| e.to_string())?;
+        config.auto_start = current.auto_start;
+        Ok(config.sanitized())
+    }
+
+    /// エクスポート用の JSON。
+    pub fn to_export(&self, version: &str) -> String {
+        let mut c = self.clone();
+        c.auto_start = false;
+        serde_json::to_string_pretty(&serde_json::json!({
+            "app": EXPORT_APP,
+            "version": version,
+            "config": c,
+        }))
+        .expect("config serializes")
     }
 
     /// フォアグラウンドのアプリが除外対象か。
@@ -416,6 +487,27 @@ mod tests {
         assert!(c.is_excluded("1password"));
         assert!(!c.is_excluded("notepad.exe"));
         assert!(!c.is_excluded(""));
+    }
+
+    #[test]
+    fn export_import_roundtrip() {
+        let mut c = Config { auto_start: true, max_items: 5, ..Default::default() };
+        c.mouse.show_clicks = true;
+        c.chroma_key.enabled = true;
+        let json = c.to_export("1.1.0");
+        assert!(json.contains("\"app\": \"key_hyouji\""));
+        // 取り込み先の自動起動設定を維持
+        let current = Config { auto_start: false, ..Default::default() };
+        let imported = Config::from_export(&json, &current).unwrap();
+        assert_eq!(imported.max_items, 5);
+        assert!(imported.mouse.show_clicks && imported.chroma_key.enabled);
+        assert!(!imported.auto_start);
+        // 設定そのものの JSON も受け付け、不正値は補正
+        let raw = Config::from_export(r#"{"maxItems": 99, "chromaKey": {"enabled": true, "color": "green"}}"#, &current).unwrap();
+        assert_eq!(raw.max_items, 10);
+        assert_eq!(raw.chroma_key.color, "#00ff00");
+        assert!(Config::from_export("[1,2]", &current).is_err());
+        assert!(Config::from_export("not json", &current).is_err());
     }
 
     #[test]

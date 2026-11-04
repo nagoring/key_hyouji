@@ -2,12 +2,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { initI18n, t } from "./i18n";
-import { applyThemeVars, type HookStatus, type Theme } from "./types";
+import { applyThemeVars, rgba, type HookStatus, type Theme } from "./types";
 
 type DisplayItem = { id: number; kind: "text" | "combo"; label: string; count: number };
 type Update = { type: "new" | "update"; item: DisplayItem };
 type Layout = { vertical: "top" | "middle" | "bottom"; horizontal: "left" | "center" | "right"; arranging: boolean };
-type Settings = { displayDurationMs: number; fadeDurationMs: number; maxItems: number; theme: Theme };
+type Settings = {
+  displayDurationMs: number;
+  fadeDurationMs: number;
+  maxItems: number;
+  theme: Theme;
+  chromaKey: { enabled: boolean; color: string };
+};
 type OverlayState = { layout: Layout; settings: Settings; paused: boolean; hook: HookStatus };
 
 const stack = document.getElementById("stack")!;
@@ -83,6 +89,13 @@ function applySettings(s: Settings) {
   const root = document.documentElement;
   root.style.setProperty("--fade-ms", `${s.fadeDurationMs}ms`);
   applyThemeVars(root, s.theme);
+  // 配信用モード: 背景を単色にしてクロマキーで抜けるようにする
+  root.dataset.chroma = String(s.chromaKey.enabled);
+  document.body.style.background = s.chromaKey.enabled ? s.chromaKey.color : "transparent";
+  // 半透明の背景は単色と混ざってクロマキーで抜けなくなるので不透明にする（背景なしのテーマは除く）
+  if (s.chromaKey.enabled && s.theme.bgOpacity > 0) {
+    root.style.setProperty("--bg", rgba(s.theme.bgColor, 1));
+  }
   // 上限が減った場合に溢れた分を消す
   const overflow = entries.size - s.maxItems;
   if (overflow > 0) [...entries.keys()].filter((id) => id !== SECURE_ID).slice(0, overflow).forEach(removeEntry);
