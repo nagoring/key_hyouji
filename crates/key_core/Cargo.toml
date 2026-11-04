@@ -1,6 +1,6 @@
 [package]
 name = "key_core"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2021"
 description = "Keystroke capture (Windows/macOS) and display aggregation logic"
 license = "MIT"
@@ -17,4 +17,8 @@ windows = { version = "0.62", features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_System_LibraryLoader",
   "Win32_System_Threading",
+  "Win32_System_Com",
+  "Win32_UI_Accessibility",
+  "Win32_UI_Input_Ime",
+  "Win32_UI_Shell",
 ] }

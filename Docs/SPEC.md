@@ -251,8 +251,15 @@
 |---|---|---|
 | v0.1 (MVP) | F-01〜F-08、オーバーレイ（W-01〜W-04）、トレイ、一時停止、P-01 | 実装済み |
 | v0.2 | 設定GUI、テーマ、マルチモニター（W-05）、除外アプリ（P-03）、macOSオンボーディング、ホットキー変更（C-02） | 実装済み |
-| v1.0 | パスワード欄対策、IME対応、コード署名、自動起動、多言語 | 未着手 |
+| v1.0 | パスワード欄対策（P-02）、IME対応（F-11）、コード署名（CI）、自動起動（C-04）、多言語（C-06） | 実装済み |
 | v1.1 | マウスクリック表示、配信用モード、設定インポート/エクスポート | 未着手 |
+
+### v1.0 の実装メモ
+- パスワード欄: Windows は UI Automation（`IUIAutomation::GetFocusedElement` → `CurrentIsPassword`）をキー入力ごとに確認（タイムアウト 200ms）。該当時はキーを捨て、回数を出さない「🔒」のみ表示。macOS は Secure Event Input 中に OS がキーを渡さないため、`IsSecureEventInputEnabled` を 500ms 間隔で監視して「🔒」を表示し続ける。
+- IME: Windows は最前面ウィンドウの既定 IME ウィンドウに `WM_IME_CONTROL`（開閉状態・変換モード）を問い合わせ、ネイティブモードなら IME オンと判定。macOS は現在の入力ソースが入力メソッドのモードで、ID が `.Roman` / `.ABC` で終わらなければ IME オン（TIS API はメインスレッドで実行）。結果は 200ms キャッシュ。「隠す」設定では修飾なしの文字入力のみ隠し、ショートカット・特殊キーは表示する。
+- 自動起動: Windows はスタートアップフォルダに .lnk（COM の `IShellLinkW`）、macOS は `~/Library/LaunchAgents/com.nagoring.keyhyouji.plist`。起動時に登録先を現在の実行ファイルに更新する（ポータブル exe の移動に追従）。
+- 多言語: 言語は Rust 側で決定（`auto` は `sys-locale` で OS のロケールを取得し、日本語以外は英語）。トレイ・ウィンドウタイトルは Rust、画面内は `src/i18n.ts`。切り替えは再起動なしで反映。
+- コード署名: CI で Secret が登録されている場合のみ署名（Windows: signtool、macOS: Tauri の署名・公証）。手順は `Docs/RELEASE.md`。
 
 ### v0.2 の実装メモ
 - フロントエンドは React / Svelte を使わず素の TypeScript（画面が単純なため。必要になれば再検討）。

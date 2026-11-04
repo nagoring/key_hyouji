@@ -12,45 +12,56 @@ use tauri::{AppHandle, Manager, Wry};
 const TRAY_ID: &str = "main";
 
 pub struct TrayMenu {
+    settings: MenuItem<Wry>,
     pause: CheckMenuItem<Wry>,
+    mode_menu: Submenu<Wry>,
     mode_all: CheckMenuItem<Wry>,
     mode_shortcuts: CheckMenuItem<Wry>,
+    pos_menu: Submenu<Wry>,
     presets: Vec<(Preset, CheckMenuItem<Wry>)>,
     arrange: CheckMenuItem<Wry>,
+    onboarding: Option<MenuItem<Wry>>,
+    quit: MenuItem<Wry>,
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    let settings = MenuItem::with_id(app, "settings", "設定…", true, None::<&str>)?;
-    let pause = CheckMenuItem::with_id(app, "pause", "一時停止", true, false, None::<&str>)?;
+    let tr = app.state::<AppState>().strings();
+    let settings = MenuItem::with_id(app, "settings", tr.settings, true, None::<&str>)?;
+    let pause = CheckMenuItem::with_id(app, "pause", tr.pause, true, false, None::<&str>)?;
 
-    let mode_all = CheckMenuItem::with_id(app, "mode:all", "すべてのキー", true, true, None::<&str>)?;
-    let mode_shortcuts = CheckMenuItem::with_id(app, "mode:shortcuts", "ショートカットのみ", true, false, None::<&str>)?;
-    let mode_menu = Submenu::with_items(app, "表示モード", true, &[&mode_all, &mode_shortcuts])?;
+    let mode_all = CheckMenuItem::with_id(app, "mode:all", tr.mode_all, true, true, None::<&str>)?;
+    let mode_shortcuts = CheckMenuItem::with_id(app, "mode:shortcuts", tr.mode_shortcuts, true, false, None::<&str>)?;
+    let mode_menu = Submenu::with_items(app, tr.display_mode, true, &[&mode_all, &mode_shortcuts])?;
 
     let presets = Preset::ALL
         .into_iter()
         .map(|p| {
-            CheckMenuItem::with_id(app, format!("pos:{}", p.id()), p.label(), true, false, None::<&str>)
+            CheckMenuItem::with_id(app, format!("pos:{}", p.id()), tr.preset(p), true, false, None::<&str>)
                 .map(|item| (p, item))
         })
         .collect::<tauri::Result<Vec<_>>>()?;
-    let arrange = CheckMenuItem::with_id(app, "arrange", "配置モード（ドラッグで移動）", true, false, None::<&str>)?;
+    let arrange = CheckMenuItem::with_id(app, "arrange", tr.arrange, true, false, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let mut pos_items: Vec<&dyn IsMenuItem<Wry>> = presets.iter().map(|(_, i)| i as &dyn IsMenuItem<Wry>).collect();
     pos_items.push(&separator);
     pos_items.push(&arrange);
-    let pos_menu = Submenu::with_items(app, "表示位置", true, &pos_items)?;
+    let pos_menu = Submenu::with_items(app, tr.position, true, &pos_items)?;
 
-    let quit = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", tr.quit, true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
 
-    #[cfg(target_os = "macos")]
-    let privacy = MenuItem::with_id(app, "onboarding", "入力監視の許可について…", true, None::<&str>)?;
+    // macOS のみ: 入力監視の案内
+    let onboarding = if cfg!(target_os = "macos") {
+        Some(MenuItem::with_id(app, "onboarding", tr.onboarding, true, None::<&str>)?)
+    } else {
+        None
+    };
 
     let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&settings, &pause, &sep1, &mode_menu, &pos_menu];
-    #[cfg(target_os = "macos")]
-    items.push(&privacy);
+    if let Some(o) = &onboarding {
+        items.push(o);
+    }
     items.push(&sep2);
     items.push(&quit);
     let menu = Menu::with_items(app, &items)?;
@@ -65,7 +76,18 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     }
     builder.build(app)?;
 
-    app.manage(TrayMenu { pause, mode_all, mode_shortcuts, presets, arrange });
+    app.manage(TrayMenu {
+        settings,
+        pause,
+        mode_menu,
+        mode_all,
+        mode_shortcuts,
+        pos_menu,
+        presets,
+        arrange,
+        onboarding,
+        quit,
+    });
     sync(app);
     Ok(())
 }
@@ -90,18 +112,38 @@ fn handle_menu(app: &AppHandle, id: &str) {
     }
 }
 
+/// 言語が変わったときにメニューの文言を差し替える（C-06）。
+pub fn relabel(app: &AppHandle) {
+    let Some(menu) = app.try_state::<TrayMenu>() else { return };
+    let tr = app.state::<AppState>().strings();
+    let _ = menu.settings.set_text(tr.settings);
+    let _ = menu.mode_menu.set_text(tr.display_mode);
+    let _ = menu.mode_all.set_text(tr.mode_all);
+    let _ = menu.mode_shortcuts.set_text(tr.mode_shortcuts);
+    let _ = menu.pos_menu.set_text(tr.position);
+    for (p, item) in &menu.presets {
+        let _ = item.set_text(tr.preset(*p));
+    }
+    let _ = menu.arrange.set_text(tr.arrange);
+    if let Some(o) = &menu.onboarding {
+        let _ = o.set_text(tr.onboarding);
+    }
+    let _ = menu.quit.set_text(tr.quit);
+}
+
 /// メニューのチェック状態とツールチップを現在の状態に合わせる。
 /// （クリックでチェックが自動反転するため、操作後は必ず呼ぶ）
 pub fn sync(app: &AppHandle) {
     let Some(menu) = app.try_state::<TrayMenu>() else { return };
     let s = app.state::<AppState>();
+    let tr = s.strings();
     let (mode, position, hotkey) = {
         let c = s.config.lock().unwrap();
         (c.display_mode, c.position, c.pause_hotkey.clone())
     };
     let paused = s.is_paused();
     let _ = menu.pause.set_checked(paused);
-    let _ = menu.pause.set_text(format!("一時停止（{}）", hotkey_label(&hotkey, Platform::current())));
+    let _ = menu.pause.set_text(tr.with_paren(tr.pause, &hotkey_label(&hotkey, Platform::current())));
     let _ = menu.mode_all.set_checked(mode == DisplayMode::All);
     let _ = menu.mode_shortcuts.set_checked(mode == DisplayMode::ShortcutsOnly);
     for (p, item) in &menu.presets {
@@ -109,11 +151,15 @@ pub fn sync(app: &AppHandle) {
     }
     let _ = menu.arrange.set_checked(s.is_arranging());
 
-    let tooltip = match (paused, s.hook_status()) {
-        (_, HookStatus::NeedPermission) => "key_hyouji（入力監視の許可が必要）".to_owned(),
-        (_, HookStatus::Error { .. }) => "key_hyouji（エラー）".to_owned(),
-        (true, _) => "key_hyouji（一時停止中）".to_owned(),
-        _ => "key_hyouji".to_owned(),
+    let status = match (paused, s.hook_status()) {
+        (_, HookStatus::NeedPermission) => Some(tr.tooltip_need_permission),
+        (_, HookStatus::Error { .. }) => Some(tr.tooltip_error),
+        (true, _) => Some(tr.tooltip_paused),
+        _ => None,
+    };
+    let tooltip = match status {
+        Some(st) => tr.with_paren("key_hyouji", st),
+        None => "key_hyouji".to_owned(),
     };
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let _ = tray.set_tooltip(Some(tooltip));

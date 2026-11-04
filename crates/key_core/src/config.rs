@@ -54,20 +54,6 @@ impl Preset {
         Preset::ALL.into_iter().find(|p| p.id() == id)
     }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            Preset::TopLeft => "左上",
-            Preset::TopCenter => "上中央",
-            Preset::TopRight => "右上",
-            Preset::MiddleLeft => "左中央",
-            Preset::MiddleCenter => "中央",
-            Preset::MiddleRight => "右中央",
-            Preset::BottomLeft => "左下",
-            Preset::BottomCenter => "下中央",
-            Preset::BottomRight => "右下",
-        }
-    }
-
     pub fn vertical(self) -> &'static str {
         match self {
             Preset::TopLeft | Preset::TopCenter | Preset::TopRight => "top",
@@ -180,6 +166,47 @@ impl Default for Theme {
     }
 }
 
+/// UI の言語（C-06）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Language {
+    /// OS の言語に従う
+    Auto,
+    Ja,
+    En,
+}
+
+impl Language {
+    /// `Auto` を OS のロケール（例: `ja-JP`）で解決する。日本語以外は英語。
+    pub fn resolve(self, os_locale: Option<&str>) -> Language {
+        match self {
+            Language::Auto => match os_locale {
+                Some(l) if l.to_ascii_lowercase().starts_with("ja") => Language::Ja,
+                _ => Language::En,
+            },
+            other => other,
+        }
+    }
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Language::Auto => "auto",
+            Language::Ja => "ja",
+            Language::En => "en",
+        }
+    }
+}
+
+/// IME（日本語入力）オン中の文字入力の扱い（F-11）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ImeMode {
+    /// 表示しない（ショートカット・特殊キーは表示）
+    Hide,
+    /// 押したキー（ローマ字）をそのまま表示
+    Show,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
@@ -200,6 +227,14 @@ pub struct Config {
     pub excluded_apps: Vec<String>,
     /// 一時停止ホットキー（例: `Control+Alt+Shift+KeyK`）
     pub pause_hotkey: String,
+    /// パスワード欄に入力中は表示しない（P-02。Windows で有効。macOS は OS が常に遮断）
+    pub mask_password_fields: bool,
+    /// 安全な入力中であることを「🔒」で知らせる
+    pub show_secure_indicator: bool,
+    pub ime_mode: ImeMode,
+    /// ログイン時に自動起動（C-04）
+    pub auto_start: bool,
+    pub language: Language,
 }
 
 pub const DEFAULT_PAUSE_HOTKEY: &str = "Control+Alt+Shift+KeyK";
@@ -221,6 +256,11 @@ impl Default for Config {
             theme: Theme::default(),
             excluded_apps: Vec::new(),
             pause_hotkey: DEFAULT_PAUSE_HOTKEY.into(),
+            mask_password_fields: true,
+            show_secure_indicator: true,
+            ime_mode: ImeMode::Hide,
+            auto_start: false,
+            language: Language::Auto,
         }
     }
 }
@@ -376,6 +416,18 @@ mod tests {
         assert!(c.is_excluded("1password"));
         assert!(!c.is_excluded("notepad.exe"));
         assert!(!c.is_excluded(""));
+    }
+
+    #[test]
+    fn language_resolution() {
+        assert_eq!(Language::Auto.resolve(Some("ja-JP")), Language::Ja);
+        assert_eq!(Language::Auto.resolve(Some("en-US")), Language::En);
+        assert_eq!(Language::Auto.resolve(Some("fr")), Language::En);
+        assert_eq!(Language::Auto.resolve(None), Language::En);
+        assert_eq!(Language::Ja.resolve(Some("en-US")), Language::Ja);
+        let c: Config = serde_json::from_str(r#"{"language":"en","imeMode":"show"}"#).unwrap();
+        assert_eq!((c.language, c.ime_mode), (Language::En, ImeMode::Show));
+        assert!(c.mask_password_fields);
     }
 
     #[test]

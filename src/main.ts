@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { initI18n, t } from "./i18n";
 import { applyThemeVars, type HookStatus, type Theme } from "./types";
 
 type DisplayItem = { id: number; kind: "text" | "combo"; label: string; count: number };
@@ -24,6 +25,8 @@ let noticeTimer: number | undefined;
 type Entry = { el: HTMLElement; label: HTMLElement; count: HTMLElement; timer?: number; leaving: boolean };
 // 挿入順 = 古い順
 const entries = new Map<number, Entry>();
+/** macOS の Secure Input 中に出し続ける 🔒 の ID */
+const SECURE_ID = -1;
 
 function scheduleRemoval(id: number, entry: Entry) {
   clearTimeout(entry.timer);
@@ -66,7 +69,7 @@ function show(update: Update) {
   // 上限を超えたら古い順に消す（F-06）
   const overflow = entries.size - settings.maxItems;
   if (overflow > 0) {
-    [...entries.keys()].slice(0, overflow).forEach(removeEntry);
+    [...entries.keys()].filter((id) => id !== SECURE_ID).slice(0, overflow).forEach(removeEntry);
   }
 }
 
@@ -82,7 +85,7 @@ function applySettings(s: Settings) {
   applyThemeVars(root, s.theme);
   // 上限が減った場合に溢れた分を消す
   const overflow = entries.size - s.maxItems;
-  if (overflow > 0) [...entries.keys()].slice(0, overflow).forEach(removeEntry);
+  if (overflow > 0) [...entries.keys()].filter((id) => id !== SECURE_ID).slice(0, overflow).forEach(removeEntry);
 }
 
 function renderNotice(text: string | null, warn = false, durationMs?: number) {
@@ -103,13 +106,10 @@ function renderNotice(text: string | null, warn = false, durationMs?: number) {
 function renderHookNotice() {
   switch (hook.state) {
     case "needPermission":
-      renderNotice(
-        "キー入力を表示するには「入力監視」の許可が必要です。\nシステム設定 › プライバシーとセキュリティ › 入力監視 で key_hyouji をオンにしてください。",
-        true,
-      );
+      renderNotice(t("overlay.needPermission"), true);
       break;
     case "error":
-      renderNotice(`キー入力の取得を開始できませんでした: ${hook.message}`, true);
+      renderNotice(t("overlay.hookError") + hook.message, true);
       break;
     default:
       renderNotice(null);
@@ -128,7 +128,20 @@ frame.addEventListener("mousedown", (e) => {
   }
 });
 
+/** パスワード入力中（macOS の Secure Input）の 🔒 表示。解除されるまで消さない */
+function showSecure(on: boolean) {
+  const existing = entries.get(SECURE_ID);
+  if (!on) {
+    if (existing) removeEntry(SECURE_ID);
+    return;
+  }
+  show({ type: "update", item: { id: SECURE_ID, kind: "combo", label: "🔒", count: 1 } });
+  clearTimeout(entries.get(SECURE_ID)?.timer);
+}
+
 async function main() {
+  await initI18n(() => renderHookNotice());
+  await listen<boolean>("secure-input", (e) => showSecure(e.payload));
   await listen<Update>("keystroke", (e) => show(e.payload));
   await listen<Layout>("layout", (e) => applyLayout(e.payload));
   await listen<Settings>("settings", (e) => applySettings(e.payload));
@@ -136,9 +149,9 @@ async function main() {
   await listen<boolean>("paused", (e) => {
     if (e.payload) {
       entries.forEach((_, id) => removeEntry(id));
-      renderNotice("⏸ 一時停止中", false, 1500);
+      renderNotice(t("overlay.paused"), false, 1500);
     } else {
-      renderNotice("▶ 表示を再開", false, 1500);
+      renderNotice(t("overlay.resumed"), false, 1500);
     }
   });
 

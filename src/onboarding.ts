@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { initI18n, t } from "./i18n";
 import type { HookStatus } from "./types";
 
 type PermissionStatus = { granted: boolean; hook: HookStatus };
@@ -15,13 +16,13 @@ function render(s: PermissionStatus) {
   const running = s.hook.state === "running";
   if (running) {
     status.className = "status ok";
-    status.textContent = "✓ 準備完了：キー入力が画面に表示されます。";
+    status.textContent = t("onb.ready");
   } else if (s.granted) {
     status.className = "status waiting";
-    status.textContent = "許可されました。反映するには key_hyouji を再起動してください。";
+    status.textContent = t("onb.granted");
   } else {
     status.className = "status waiting";
-    status.textContent = "⏳ 入力監視の許可を待っています…";
+    status.textContent = t("onb.waiting");
   }
   steps.classList.toggle("done", s.granted || running);
   openBtn.hidden = s.granted || running;
@@ -37,6 +38,7 @@ openBtn.addEventListener("click", () => void invoke("open_privacy_settings"));
 restartBtn.addEventListener("click", () => void invoke("restart_app"));
 closeBtn.addEventListener("click", () => void getCurrentWindow().close());
 
+await initI18n(() => void refresh());
 void refresh();
 await listen<HookStatus>("hook-status", () => void refresh());
 // システム設定から戻ってきたときなどに確認

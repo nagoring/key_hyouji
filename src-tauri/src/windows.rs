@@ -1,5 +1,6 @@
 //! 設定画面・オンボーディング画面の表示。
 
+use crate::state::AppState;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 pub const SETTINGS: &str = "settings";
@@ -29,11 +30,24 @@ fn open(app: &AppHandle, label: &str, url: &str, title: &str, size: (f64, f64), 
 }
 
 pub fn open_settings(app: &AppHandle) {
-    open(app, SETTINGS, "settings.html", "key_hyouji 設定", (760.0, 600.0), true);
+    let title = app.state::<AppState>().strings().settings_title;
+    open(app, SETTINGS, "settings.html", title, (760.0, 600.0), true);
 }
 
 pub fn open_onboarding(app: &AppHandle) {
-    open(app, ONBOARDING, "onboarding.html", "key_hyouji へようこそ", (560.0, 520.0), false);
+    let title = app.state::<AppState>().strings().onboarding_title;
+    open(app, ONBOARDING, "onboarding.html", title, (560.0, 540.0), false);
+}
+
+/// 言語変更時に開いているウィンドウのタイトルを更新する。
+pub fn retitle(app: &AppHandle) {
+    let tr = app.state::<AppState>().strings();
+    if let Some(w) = app.get_webview_window(SETTINGS) {
+        let _ = w.set_title(tr.settings_title);
+    }
+    if let Some(w) = app.get_webview_window(ONBOARDING) {
+        let _ = w.set_title(tr.onboarding_title);
+    }
 }
 
 pub fn open_privacy_settings() {

@@ -116,6 +116,12 @@ pub fn open_privacy_settings() {
     windows::open_privacy_settings();
 }
 
+/// 画面に使う言語（"ja" / "en"）。
+#[tauri::command]
+pub fn get_language(app: AppHandle) -> &'static str {
+    app.state::<AppState>().language().code()
+}
+
 #[tauri::command]
 pub fn restart_app(app: AppHandle) {
     app.restart();

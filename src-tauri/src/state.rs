@@ -3,8 +3,9 @@
 //! 設定の変更はトレイ・設定画面・配置モードのどこからでも [`apply_config`] を通す。
 //! 保存 → 集約ロジック / オーバーレイ / ホットキー / トレイへの反映を一括で行う。
 
+use crate::i18n::{self, Strings};
 use crate::{overlay, tray, OVERLAY};
-use key_core::config::{Config, Position, Preset};
+use key_core::config::{Config, ImeMode, Language, Position, Preset};
 use key_core::foreground::{self, ForegroundApp};
 use key_core::{Aggregator, DisplayMode};
 use serde::Serialize;
@@ -53,6 +54,8 @@ pub struct OverlayState {
 
 /// フォアグラウンドアプリの問い合わせ結果を短時間キャッシュする（キー入力ごとの負荷を抑える）
 const FOREGROUND_CACHE: Duration = Duration::from_millis(300);
+/// IME 状態の問い合わせ結果のキャッシュ時間
+const IME_CACHE: Duration = Duration::from_millis(200);
 
 pub struct AppState {
     config_dir: PathBuf,
@@ -62,6 +65,8 @@ pub struct AppState {
     arranging: AtomicBool,
     hook: Mutex<HookStatus>,
     foreground: Mutex<Option<(Instant, Option<ForegroundApp>)>>,
+    ime: Mutex<Option<(Instant, bool)>>,
+    os_locale: Option<String>,
 }
 
 impl AppState {
@@ -74,7 +79,19 @@ impl AppState {
             arranging: AtomicBool::new(false),
             hook: Mutex::new(HookStatus::Starting),
             foreground: Mutex::new(None),
+            ime: Mutex::new(None),
+            os_locale: sys_locale::get_locale(),
         }
+    }
+
+    /// 実際に使う言語（`Auto` を OS の言語で解決したもの）。
+    pub fn language(&self) -> Language {
+        let lang = self.config.lock().unwrap().language;
+        lang.resolve(self.os_locale.as_deref())
+    }
+
+    pub fn strings(&self) -> &'static Strings {
+        i18n::strings(self.language())
     }
 
     pub fn config(&self) -> Config {
@@ -139,13 +156,52 @@ impl AppState {
     }
 }
 
+impl AppState {
+    /// IME で文字を変換する入力モードか（F-11）。短時間キャッシュする。
+    pub fn ime_active(&self, app: &AppHandle) -> bool {
+        let mut cache = self.ime.lock().unwrap();
+        if let Some((at, v)) = *cache {
+            if at.elapsed() < IME_CACHE {
+                return v;
+            }
+        }
+        let v = query_ime(app);
+        *cache = Some((Instant::now(), v));
+        v
+    }
+
+    pub fn ime_mode(&self) -> ImeMode {
+        self.config.lock().unwrap().ime_mode
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn query_ime(app: &AppHandle) -> bool {
+    // Text Input Sources API はメインスレッドで呼ぶ
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    if app
+        .run_on_main_thread(move || {
+            let _ = tx.send(key_core::ime::ime_active());
+        })
+        .is_err()
+    {
+        return false;
+    }
+    rx.recv_timeout(Duration::from_millis(150)).unwrap_or(false)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn query_ime(_app: &AppHandle) -> bool {
+    key_core::ime::ime_active()
+}
+
 fn state(app: &AppHandle) -> tauri::State<'_, AppState> {
     app.state::<AppState>()
 }
 
 /// 設定文字列からホットキーを作る。
 pub fn parse_hotkey(spec: &str) -> Result<Shortcut, String> {
-    spec.parse::<Shortcut>().map_err(|e| format!("ホットキーを解釈できません（{spec}）: {e}"))
+    spec.parse::<Shortcut>().map_err(|e| format!("{spec}: {e}"))
 }
 
 /// 起動時のホットキー登録。失敗してもアプリは起動を続ける。
@@ -158,7 +214,8 @@ pub fn register_initial_hotkey(app: &AppHandle) {
 }
 
 fn swap_hotkey(app: &AppHandle, old: &str, new: &str) -> Result<(), String> {
-    let new_sc = parse_hotkey(new)?;
+    let tr = state(app).strings();
+    let new_sc = parse_hotkey(new).map_err(|e| tr.with_paren(tr.err_hotkey_parse, &e))?;
     let gs = app.global_shortcut();
     if let Ok(old_sc) = parse_hotkey(old) {
         let _ = gs.unregister(old_sc);
@@ -168,7 +225,7 @@ fn swap_hotkey(app: &AppHandle, old: &str, new: &str) -> Result<(), String> {
         if let Ok(old_sc) = parse_hotkey(old) {
             let _ = gs.register(old_sc);
         }
-        return Err(format!("ホットキーを登録できません（他のアプリが使用中の可能性）: {e}"));
+        return Err(format!("{}: {e}", tr.err_hotkey_register));
     }
     Ok(())
 }
@@ -181,8 +238,21 @@ pub fn apply_config(app: &AppHandle, new: Config) -> Result<Config, String> {
     if new == old {
         return Ok(new);
     }
+    if new.auto_start != old.auto_start {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        key_core::autostart::set_enabled(new.auto_start, &exe)
+            .map_err(|e| format!("{}: {e}", s.strings().err_autostart))?;
+    }
     if new.pause_hotkey != old.pause_hotkey {
-        swap_hotkey(app, &old.pause_hotkey, &new.pause_hotkey)?;
+        if let Err(e) = swap_hotkey(app, &old.pause_hotkey, &new.pause_hotkey) {
+            // 自動起動だけ変わった状態にならないよう戻す
+            if new.auto_start != old.auto_start {
+                if let Ok(exe) = std::env::current_exe() {
+                    let _ = key_core::autostart::set_enabled(old.auto_start, &exe);
+                }
+            }
+            return Err(e);
+        }
     }
 
     {
@@ -206,7 +276,15 @@ pub fn apply_config(app: &AppHandle, new: Config) -> Result<Config, String> {
     }
     let _ = app.emit_to(OVERLAY, "settings", s.settings());
     let _ = app.emit_to(OVERLAY, "layout", s.layout());
+    if !new.show_secure_indicator {
+        let _ = app.emit_to(OVERLAY, "secure-input", false);
+    }
     let _ = app.emit("config-changed", &new);
+    if new.language != old.language {
+        let _ = app.emit("language-changed", s.language().code());
+        tray::relabel(app);
+        crate::windows::retitle(app);
+    }
     tray::sync(app);
     Ok(new)
 }

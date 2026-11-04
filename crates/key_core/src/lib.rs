@@ -6,11 +6,14 @@
 //! - [`hook`] — OS ごとのグローバルキーフック（Windows / macOS）
 
 pub mod aggregator;
+pub mod autostart;
 pub mod config;
 pub mod event;
 pub mod foreground;
 pub mod format;
 pub mod hook;
+pub mod ime;
+pub mod secure;
 
 pub use aggregator::{Aggregator, AggregatorConfig, DisplayItem, DisplayKind, DisplayMode, Update};
 pub use event::{Key, KeyEvent, Modifiers, NamedKey};

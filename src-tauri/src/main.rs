@@ -2,14 +2,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod i18n;
 mod overlay;
 mod state;
 mod tray;
 mod windows;
 
-use key_core::config::Config;
+use key_core::config::{Config, ImeMode};
 use key_core::hook::{self, HookError};
-use key_core::{Aggregator, KeyEvent};
+use key_core::aggregator::is_typing;
+use key_core::{Aggregator, DisplayItem, DisplayKind, KeyEvent, Update};
 use state::{AppState, HookStatus};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
@@ -18,6 +20,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 pub const OVERLAY: &str = "overlay";
+
+/// パスワード入力中に出す「🔒」表示の ID（通常のキー表示と衝突しない値）
+const SECURE_ITEM_ID: u64 = u64::MAX - 1;
 
 fn main() {
     tauri::Builder::default()
@@ -46,6 +51,7 @@ fn main() {
             commands::get_permission_status,
             commands::request_permission,
             commands::open_privacy_settings,
+            commands::get_language,
             commands::restart_app,
         ])
         .setup(|app| {
@@ -68,6 +74,17 @@ fn main() {
             tray::create(app.handle())?;
             state::register_initial_hotkey(app.handle());
             overlay::spawn_follow(app.handle().clone());
+            spawn_secure_input_watch(app.handle().clone());
+
+            // 自動起動が有効なら登録先を現在の実行ファイルに合わせる（exe を移動した場合への追従）
+            let state = app.state::<AppState>();
+            if state.config().auto_start {
+                if let Ok(exe) = std::env::current_exe() {
+                    if let Err(e) = key_core::autostart::set_enabled(true, &exe) {
+                        log::warn!("failed to refresh autostart: {e}");
+                    }
+                }
+            }
 
             // macOS: 入力監視の権限が無ければ案内画面を出す
             if !hook::has_permission() {
@@ -106,6 +123,24 @@ fn spawn_pipeline(app: AppHandle, rx: Receiver<KeyEvent>) {
                     state.aggregator.lock().unwrap().reset();
                     continue;
                 }
+                let (mask_password, show_indicator) = {
+                    let c = state.config.lock().unwrap();
+                    (c.mask_password_fields, c.show_secure_indicator)
+                };
+                // パスワード欄への入力は表示しない（P-02）。回数も出さない
+                if mask_password && key_core::secure::password_field_focused() {
+                    state.aggregator.lock().unwrap().reset();
+                    if show_indicator {
+                        let item = DisplayItem { id: SECURE_ITEM_ID, kind: DisplayKind::Combo, label: "🔒".into(), count: 1 };
+                        let _ = app.emit_to(OVERLAY, "keystroke", Update::Update(item));
+                    }
+                    continue;
+                }
+                // IME オン中の文字入力（変換前のローマ字）は表示しない（F-11）
+                if state.ime_mode() == ImeMode::Hide && is_typing(&ev) && state.ime_active(&app) {
+                    state.aggregator.lock().unwrap().reset();
+                    continue;
+                }
                 let now_ms = started.elapsed().as_millis() as u64;
                 let update = state.aggregator.lock().unwrap().push(&ev, now_ms);
                 if let Some(update) = update {
@@ -114,6 +149,28 @@ fn spawn_pipeline(app: AppHandle, rx: Receiver<KeyEvent>) {
             }
         })
         .expect("spawn pipeline thread");
+}
+
+/// macOS の Secure Event Input（パスワード入力中など）を監視し、オーバーレイに知らせる。
+fn spawn_secure_input_watch(app: AppHandle) {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    thread::Builder::new()
+        .name("secure-input-watch".into())
+        .spawn(move || {
+            let mut last = false;
+            loop {
+                thread::sleep(Duration::from_millis(500));
+                let enabled = app.state::<AppState>().config().show_secure_indicator
+                    && key_core::secure::secure_input_enabled();
+                if enabled != last {
+                    last = enabled;
+                    let _ = app.emit_to(OVERLAY, "secure-input", enabled);
+                }
+            }
+        })
+        .expect("spawn secure input thread");
 }
 
 /// キーフックを開始する。macOS で権限が無い場合は許可されるまで再試行する。

@@ -165,6 +165,11 @@ impl Aggregator {
     }
 }
 
+/// 修飾なし（Shift は可）の文字入力か（IME オン中に隠す対象）。
+pub fn is_typing(ev: &KeyEvent) -> bool {
+    typing_text(ev).is_some()
+}
+
 /// 修飾なし（Shift は可）で印字可能な文字を入力するキーなら、表示用の文字列を返す。
 fn typing_text(ev: &KeyEvent) -> Option<String> {
     if ev.modifiers.has_command() {

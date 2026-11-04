@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { applyI18n, initI18n, t, type Key } from "./i18n";
 import {
   applyThemeVars,
   hotkeyLabel,
@@ -77,10 +78,10 @@ type RangeSpec = {
 };
 
 const ranges: RangeSpec[] = [
-  { id: "displayDuration", get: (c) => c.displayDurationMs / 1000, set: (c, v) => (c.displayDurationMs = Math.round(v * 1000)), format: (v) => `${v.toFixed(1)} 秒` },
+  { id: "displayDuration", get: (c) => c.displayDurationMs / 1000, set: (c, v) => (c.displayDurationMs = Math.round(v * 1000)), format: (v) => `${v.toFixed(1)} ${t("unit.sec")}` },
   { id: "fadeDuration", get: (c) => c.fadeDurationMs, set: (c, v) => (c.fadeDurationMs = v), format: (v) => `${v} ms` },
-  { id: "maxItems", get: (c) => c.maxItems, set: (c, v) => (c.maxItems = v), format: (v) => `${v} 件` },
-  { id: "mergeTyping", get: (c) => c.mergeTypingMs / 1000, set: (c, v) => (c.mergeTypingMs = Math.round(v * 1000)), format: (v) => `${v.toFixed(1)} 秒` },
+  { id: "maxItems", get: (c) => c.maxItems, set: (c, v) => (c.maxItems = v), format: (v) => `${v} ${t("unit.items")}`.trim() },
+  { id: "mergeTyping", get: (c) => c.mergeTypingMs / 1000, set: (c, v) => (c.mergeTypingMs = Math.round(v * 1000)), format: (v) => `${v.toFixed(1)} ${t("unit.sec")}` },
   { id: "fontSize", get: (c) => c.theme.fontSize, set: (c, v) => (c.theme.fontSize = v), format: (v) => `${v} px` },
   { id: "bgOpacity", get: (c) => c.theme.bgOpacity, set: (c, v) => (c.theme.bgOpacity = v), format: (v) => `${Math.round(v * 100)} %`, theme: true },
   { id: "borderRadius", get: (c) => c.theme.borderRadius, set: (c, v) => (c.theme.borderRadius = v), format: (v) => `${v} px`, theme: true },
@@ -119,6 +120,8 @@ function render() {
   }
   $<HTMLSelectElement>("modifierStyle").value = config.modifierStyle;
   $<HTMLInputElement>("showModifierOnly").checked = config.showModifierOnly;
+  $<HTMLInputElement>("autoStart").checked = config.autoStart;
+  $<HTMLSelectElement>("language").value = config.language;
 
   // 外観
   const font = $<HTMLInputElement>("fontFamily");
@@ -142,6 +145,9 @@ function render() {
   $<HTMLInputElement>("offsetY").value = String(config.offsetY);
 
   // プライバシー
+  $<HTMLInputElement>("maskPassword").checked = config.maskPasswordFields;
+  $<HTMLInputElement>("secureIndicator").checked = config.showSecureIndicator;
+  $<HTMLSelectElement>("imeMode").value = config.imeMode;
   renderExcluded();
 
   // ホットキー
@@ -157,17 +163,17 @@ async function renderMonitors() {
   const monitors = await invoke<MonitorInfo[]>("list_monitors");
   const select = $<HTMLSelectElement>("monitor");
   const options: [string, string][] = [
-    ["primary", "メインモニター"],
-    ["cursor", "マウスカーソルのあるモニター"],
-    ["active", "アクティブウィンドウのあるモニター"],
+    ["primary", t("position.monPrimary")],
+    ["cursor", t("position.monCursor")],
+    ["active", t("position.monActive")],
     ...monitors.map((m): [string, string] => [
       `fixed:${m.name}`,
-      `${m.name}（${m.width}×${m.height}${m.primary ? "・メイン" : ""}）`,
+      `${m.name} (${m.width}×${m.height}${m.primary ? t("position.monMain") : ""})`,
     ]),
   ];
   // 保存済みのモニターが今は接続されていない場合も選択肢に残す
   if (config.monitor.type === "fixed" && !monitors.some((m) => m.name === (config.monitor as { name: string }).name)) {
-    options.push([monitorValue(), `${config.monitor.name}（未接続）`]);
+    options.push([monitorValue(), `${config.monitor.name}${t("position.monDisconnected")}`]);
   }
   select.replaceChildren(
     ...options.map(([value, label]) => {
@@ -185,7 +191,7 @@ function renderExcluded() {
   if (config.excludedApps.length === 0) {
     const li = document.createElement("li");
     li.className = "empty";
-    li.textContent = "除外中のアプリはありません";
+    li.textContent = t("privacy.empty");
     list.replaceChildren(li);
     return;
   }
@@ -195,7 +201,7 @@ function renderExcluded() {
       const span = document.createElement("span");
       span.textContent = name;
       const btn = document.createElement("button");
-      btn.textContent = "削除";
+      btn.textContent = t("privacy.remove");
       btn.addEventListener("click", () => change((c) => c.excludedApps.splice(i, 1), true));
       li.append(span, btn);
       return li;
@@ -249,6 +255,12 @@ function setupGeneral() {
   $<HTMLInputElement>("showModifierOnly").addEventListener("change", (e) =>
     change((c) => (c.showModifierOnly = (e.target as HTMLInputElement).checked), true),
   );
+  $<HTMLInputElement>("autoStart").addEventListener("change", (e) =>
+    change((c) => (c.autoStart = (e.target as HTMLInputElement).checked), true),
+  );
+  $<HTMLSelectElement>("language").addEventListener("change", (e) =>
+    change((c) => (c.language = (e.target as HTMLSelectElement).value as Config["language"]), true),
+  );
   // 修飾キーの表記は macOS でのみ違いがある
   $("modifierStyleRow").hidden = info.platform !== "mac";
 }
@@ -262,14 +274,15 @@ function setupAppearance() {
     swatch.className = "swatch";
     const sample = document.createElement("span");
     sample.textContent = "A";
-    const t = { ...config.theme, ...preset.theme };
-    sample.style.color = t.textColor;
-    sample.style.background = `color-mix(in srgb, ${t.bgColor} ${Math.round(t.bgOpacity * 100)}%, transparent)`;
-    sample.style.border = t.borderWidth ? `${t.borderWidth}px solid ${t.borderColor}` : "none";
+    const th = { ...config.theme, ...preset.theme };
+    sample.style.color = th.textColor;
+    sample.style.background = `color-mix(in srgb, ${th.bgColor} ${Math.round(th.bgOpacity * 100)}%, transparent)`;
+    sample.style.border = th.borderWidth ? `${th.borderWidth}px solid ${th.borderColor}` : "none";
     sample.style.borderRadius = "4px";
     swatch.append(sample);
     const label = document.createElement("span");
-    label.textContent = preset.label;
+    label.dataset.i18n = `preset.${id}`;
+    label.textContent = t(`preset.${id}` as Key);
     b.append(swatch, label);
     b.addEventListener("click", () => {
       change((c) => (c.theme = { ...c.theme, ...preset.theme, preset: id }), true);
@@ -310,7 +323,7 @@ let arranging = false;
 
 function renderArranging() {
   const b = $("arrange");
-  b.textContent = arranging ? "配置を確定" : "配置モードを開始";
+  b.textContent = t(arranging ? "position.arrangeDone" : "position.arrangeStart");
   b.classList.toggle("on", arranging);
 }
 
@@ -346,17 +359,32 @@ function setupPosition() {
   }
 }
 
+/** OS によって異なる説明文 */
+function renderPlatformTexts() {
+  const mac = info.platform === "mac";
+  $("excludeHint").textContent = t(mac ? "privacy.excludeHintMac" : "privacy.excludeHintWin");
+  $("passwordHint").textContent = t(mac ? "privacy.passwordHintMac" : "privacy.passwordHintWin");
+  $("autoStartHint").textContent = t(mac ? "general.autoStartHintMac" : "general.autoStartHintWin");
+  // macOS は OS が常に遮断するのでチェックボックスは不要
+  $("maskPasswordWrap").hidden = mac;
+}
+
 function setupPrivacy() {
-  $("excludeHint").textContent =
-    info.platform === "mac"
-      ? "このアプリが最前面にあるときはキーを表示しません。アプリ名（例: 1Password、ターミナル）を入力してください。"
-      : "このアプリが最前面にあるときはキーを表示しません。実行ファイル名（例: KeePass.exe）を入力してください。";
+  $<HTMLInputElement>("maskPassword").addEventListener("change", (e) =>
+    change((c) => (c.maskPasswordFields = (e.target as HTMLInputElement).checked), true),
+  );
+  $<HTMLInputElement>("secureIndicator").addEventListener("change", (e) =>
+    change((c) => (c.showSecureIndicator = (e.target as HTMLInputElement).checked), true),
+  );
+  $<HTMLSelectElement>("imeMode").addEventListener("change", (e) =>
+    change((c) => (c.imeMode = (e.target as HTMLSelectElement).value as Config["imeMode"]), true),
+  );
   const input = $<HTMLInputElement>("excludeInput");
   const add = () => {
     const name = input.value.trim();
     if (!name) return;
     if (config.excludedApps.some((a) => a.toLowerCase() === name.toLowerCase())) {
-      toast("すでに追加されています");
+      toast(t("privacy.duplicate"));
       return;
     }
     input.value = "";
@@ -390,8 +418,8 @@ function hotkeyFromEvent(e: KeyboardEvent): string | null {
 function stopRecording() {
   recording = false;
   $("hotkeyLabel").classList.remove("recording");
-  $("hotkeyRecord").textContent = "変更";
   $("hotkeyLabel").textContent = hotkeyLabel(config.pauseHotkey, info.platform === "mac");
+  $("hotkeyRecord").textContent = t("hotkey.change");
   window.removeEventListener("keydown", onRecordKey, true);
 }
 
@@ -404,7 +432,7 @@ function onRecordKey(e: KeyboardEvent) {
   }
   const spec = hotkeyFromEvent(e);
   if (!spec) {
-    $("hotkeyLabel").textContent = "修飾キー + キー を押してください";
+    $("hotkeyLabel").textContent = t("hotkey.needModifier");
     return;
   }
   stopRecording();
@@ -420,8 +448,8 @@ function setupHotkey() {
     }
     recording = true;
     $("hotkeyLabel").classList.add("recording");
-    $("hotkeyLabel").textContent = "キーを押してください…（Esc で中止）";
-    $("hotkeyRecord").textContent = "中止";
+    $("hotkeyLabel").textContent = t("hotkey.recording");
+    $("hotkeyRecord").textContent = t("hotkey.cancel");
     window.addEventListener("keydown", onRecordKey, true);
   });
   $("hotkeyReset").addEventListener("click", () => change((c) => (c.pauseHotkey = "Control+Alt+Shift+KeyK"), true));
@@ -431,14 +459,26 @@ function setupAbout() {
   $("version").textContent = info.version;
   $("configPath").textContent = info.configPath;
   $("resetAll").addEventListener("click", async () => {
-    if (!confirm("表示位置とモニター以外の設定を初期値に戻します。よろしいですか？")) return;
+    if (!confirm(t("about.resetConfirm"))) return;
     config = await invoke<Config>("reset_config");
     render();
-    toast("初期設定に戻しました", true);
+    toast(t("about.resetDone"), true);
   });
 }
 
+/** 言語が変わったら動的に作った文言も作り直す */
+function onLanguageChanged() {
+  applyI18n();
+  document.title = t("app.settingsTitle");
+  renderPlatformTexts();
+  renderArranging();
+  if (!recording) $("hotkeyRecord").textContent = t("hotkey.change");
+  void renderMonitors();
+  render();
+}
+
 async function main() {
+  await initI18n(onLanguageChanged);
   [config, info, arranging] = await Promise.all([
     invoke<Config>("get_config"),
     invoke<AppInfo>("get_app_info"),
@@ -451,6 +491,9 @@ async function main() {
   setupPrivacy();
   setupHotkey();
   setupAbout();
+  renderPlatformTexts();
+  $("hotkeyRecord").textContent = t("hotkey.change");
+  document.title = t("app.settingsTitle");
   await renderMonitors();
   render();
   renderArranging();

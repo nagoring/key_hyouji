@@ -48,6 +48,11 @@ export type Config = {
   theme: Theme;
   excludedApps: string[];
   pauseHotkey: string;
+  maskPasswordFields: boolean;
+  showSecureIndicator: boolean;
+  imeMode: "hide" | "show";
+  autoStart: boolean;
+  language: "auto" | "ja" | "en";
 };
 
 export type HookStatus =
@@ -58,21 +63,17 @@ export type MonitorInfo = { name: string; width: number; height: number; primary
 export type AppInfo = { version: string; platform: "windows" | "mac"; configPath: string };
 
 /** テーマのプリセット。フォント・サイズ・アニメーションは利用者の設定を引き継ぐ。 */
-export const THEME_PRESETS: Record<string, { label: string; theme: Partial<Theme> }> = {
+export const THEME_PRESETS: Record<"dark" | "light" | "keycap" | "minimal", { theme: Partial<Theme> }> = {
   dark: {
-    label: "ダーク",
     theme: { textColor: "#ffffff", bgColor: "#000000", bgOpacity: 0.7, borderRadius: 12, borderWidth: 0, borderColor: "#ffffff", shadow: true, fontWeight: 600 },
   },
   light: {
-    label: "ライト",
     theme: { textColor: "#1f2328", bgColor: "#ffffff", bgOpacity: 0.92, borderRadius: 12, borderWidth: 1, borderColor: "#d0d7de", shadow: true, fontWeight: 600 },
   },
   keycap: {
-    label: "キーキャップ",
     theme: { textColor: "#222222", bgColor: "#f4f4f4", bgOpacity: 1, borderRadius: 8, borderWidth: 1, borderColor: "#b5b5b5", shadow: true, fontWeight: 700 },
   },
   minimal: {
-    label: "ミニマル",
     theme: { textColor: "#ffffff", bgColor: "#000000", bgOpacity: 0, borderRadius: 0, borderWidth: 0, borderColor: "#ffffff", shadow: false, fontWeight: 700 },
   },
 };
