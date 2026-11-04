@@ -220,7 +220,7 @@ pub struct MouseConfig {
 
 impl Default for MouseConfig {
     fn default() -> Self {
-        Self { show_clicks: false, show_ring: false, ring_color: "#ffcc00".into() }
+        Self { show_clicks: true, show_ring: false, ring_color: "#ffcc00".into() }
     }
 }
 
@@ -487,6 +487,13 @@ mod tests {
         assert!(c.is_excluded("1password"));
         assert!(!c.is_excluded("notepad.exe"));
         assert!(!c.is_excluded(""));
+    }
+
+    #[test]
+    fn clicks_shown_by_default() {
+        assert!(Config::default().mouse.show_clicks);
+        let c: Config = serde_json::from_str(r#"{"maxItems": 3}"#).unwrap();
+        assert!(c.mouse.show_clicks && !c.mouse.show_ring);
     }
 
     #[test]

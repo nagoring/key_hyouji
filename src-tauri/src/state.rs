@@ -325,6 +325,10 @@ pub fn set_paused(app: &AppHandle, paused: bool) {
     tray::sync(app);
 }
 
+pub fn toggle_clicks(app: &AppHandle) {
+    update(app, |c| c.mouse.show_clicks = !c.mouse.show_clicks);
+}
+
 pub fn set_display_mode(app: &AppHandle, mode: DisplayMode) {
     update(app, |c| c.display_mode = mode);
 }

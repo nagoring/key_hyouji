@@ -39,7 +39,7 @@
 | F-07 | 特殊キーは記号/名称で表示（Enter `⏎`、Backspace `⌫`、Tab `⇥`、Esc、矢印 `← ↑ → ↓`、F1〜F12、Space `␣` 等） | 必須 |
 | F-08 | OSに合わせた修飾キー表記（Win: `Ctrl` `Alt` `Shift` `Win` / Mac: `⌃` `⌥` `⇧` `⌘`）。設定で文字表記にも切替可 | 必須 |
 | F-09 | 表示モード切替：①すべてのキー ②修飾キー付きのみ（ショートカットのみ） | 必須 |
-| F-10 | マウスクリック表示（左/右/中クリック、任意でカーソル位置にリング表示） | 任意（v1.1） |
+| F-10 | マウスクリック表示（左/右/中クリック、任意でカーソル位置にリング表示）。クリック表示は既定でオン、トレイメニューから切り替え可 | 任意（v1.1） |
 | F-11 | IME入力中（日本語変換中）は変換確定前のキーをまとめるか、非表示にするかを選択可 | 推奨 |
 | F-12 | 修飾キー単体押下は表示しない（既定）。設定でON可 | 推奨 |
 
@@ -183,7 +183,7 @@
     "borderRadius": 12,
     "animation": "fade"
   },
-  "mouse": { "showClicks": false, "showRing": false },
+  "mouse": { "showClicks": true, "showRing": false },
   "excludedApps": [],
   "pauseHotkey": "CmdOrCtrl+Alt+Shift+K",
   "autoStart": false,

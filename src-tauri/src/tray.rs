@@ -17,6 +17,7 @@ pub struct TrayMenu {
     mode_menu: Submenu<Wry>,
     mode_all: CheckMenuItem<Wry>,
     mode_shortcuts: CheckMenuItem<Wry>,
+    clicks: CheckMenuItem<Wry>,
     pos_menu: Submenu<Wry>,
     presets: Vec<(Preset, CheckMenuItem<Wry>)>,
     arrange: CheckMenuItem<Wry>,
@@ -32,6 +33,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let mode_all = CheckMenuItem::with_id(app, "mode:all", tr.mode_all, true, true, None::<&str>)?;
     let mode_shortcuts = CheckMenuItem::with_id(app, "mode:shortcuts", tr.mode_shortcuts, true, false, None::<&str>)?;
     let mode_menu = Submenu::with_items(app, tr.display_mode, true, &[&mode_all, &mode_shortcuts])?;
+    let clicks = CheckMenuItem::with_id(app, "clicks", tr.show_clicks, true, false, None::<&str>)?;
 
     let presets = Preset::ALL
         .into_iter()
@@ -58,7 +60,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         None
     };
 
-    let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&settings, &pause, &sep1, &mode_menu, &pos_menu];
+    let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&settings, &pause, &sep1, &mode_menu, &clicks, &pos_menu];
     if let Some(o) = &onboarding {
         items.push(o);
     }
@@ -82,6 +84,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         mode_menu,
         mode_all,
         mode_shortcuts,
+        clicks,
         pos_menu,
         presets,
         arrange,
@@ -95,6 +98,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
 fn handle_menu(app: &AppHandle, id: &str) {
     match id {
         "pause" => state::toggle_paused(app),
+        "clicks" => state::toggle_clicks(app),
         "mode:all" => state::set_display_mode(app, DisplayMode::All),
         "mode:shortcuts" => state::set_display_mode(app, DisplayMode::ShortcutsOnly),
         "arrange" => {
@@ -120,6 +124,7 @@ pub fn relabel(app: &AppHandle) {
     let _ = menu.mode_menu.set_text(tr.display_mode);
     let _ = menu.mode_all.set_text(tr.mode_all);
     let _ = menu.mode_shortcuts.set_text(tr.mode_shortcuts);
+    let _ = menu.clicks.set_text(tr.show_clicks);
     let _ = menu.pos_menu.set_text(tr.position);
     for (p, item) in &menu.presets {
         let _ = item.set_text(tr.preset(*p));
@@ -137,15 +142,16 @@ pub fn sync(app: &AppHandle) {
     let Some(menu) = app.try_state::<TrayMenu>() else { return };
     let s = app.state::<AppState>();
     let tr = s.strings();
-    let (mode, position, hotkey) = {
+    let (mode, position, hotkey, show_clicks) = {
         let c = s.config.lock().unwrap();
-        (c.display_mode, c.position, c.pause_hotkey.clone())
+        (c.display_mode, c.position, c.pause_hotkey.clone(), c.mouse.show_clicks)
     };
     let paused = s.is_paused();
     let _ = menu.pause.set_checked(paused);
     let _ = menu.pause.set_text(tr.with_paren(tr.pause, &hotkey_label(&hotkey, Platform::current())));
     let _ = menu.mode_all.set_checked(mode == DisplayMode::All);
     let _ = menu.mode_shortcuts.set_checked(mode == DisplayMode::ShortcutsOnly);
+    let _ = menu.clicks.set_checked(show_clicks);
     for (p, item) in &menu.presets {
         let _ = item.set_checked(position == Position::Preset { preset: *p });
     }
