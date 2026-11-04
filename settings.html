@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>key_hyouji 設定</title>
+    <link rel="stylesheet" href="/src/settings.css" />
+  </head>
+  <body>
+    <nav class="sidebar" id="tabs">
+      <button data-tab="general" class="active">一般</button>
+      <button data-tab="appearance">外観</button>
+      <button data-tab="position">位置</button>
+      <button data-tab="privacy">プライバシー</button>
+      <button data-tab="hotkey">ホットキー</button>
+      <button data-tab="about">情報</button>
+    </nav>
+
+    <main>
+      <!-- 一般 -->
+      <section id="tab-general" class="tab active">
+        <h1>一般</h1>
+        <div class="row">
+          <label>表示するキー</label>
+          <div class="control segmented">
+            <label><input type="radio" name="displayMode" value="all" /> すべてのキー</label>
+            <label><input type="radio" name="displayMode" value="shortcutsOnly" /> ショートカットのみ</label>
+          </div>
+        </div>
+        <div class="row">
+          <label for="displayDuration">表示時間</label>
+          <div class="control range"><input id="displayDuration" type="range" min="0.5" max="10" step="0.5" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="fadeDuration">フェード時間</label>
+          <div class="control range"><input id="fadeDuration" type="range" min="0" max="1000" step="50" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="maxItems">同時に表示する数</label>
+          <div class="control range"><input id="maxItems" type="range" min="1" max="10" step="1" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="mergeTyping">文字をまとめる間隔</label>
+          <div class="control range"><input id="mergeTyping" type="range" min="0.2" max="3" step="0.1" /><output></output></div>
+          <p class="hint">この時間内に続けて入力した文字を 1 つにまとめて表示します。</p>
+        </div>
+        <div class="row" id="modifierStyleRow">
+          <label for="modifierStyle">修飾キーの表記</label>
+          <div class="control">
+            <select id="modifierStyle">
+              <option value="symbol">記号（⌘ ⇧ S）</option>
+              <option value="text">文字（Command + Shift + S）</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <label for="showModifierOnly">修飾キー単体</label>
+          <div class="control"><label class="check"><input id="showModifierOnly" type="checkbox" /> Shift などを単独で押したときも表示する</label></div>
+        </div>
+      </section>
+
+      <!-- 外観 -->
+      <section id="tab-appearance" class="tab">
+        <h1>外観</h1>
+        <div class="preview" id="preview">
+          <div class="preview-stage" id="previewStage">
+            <div class="key"><span class="label" id="previewLabel">⌘ ⇧ S</span><span class="count">×2</span></div>
+          </div>
+          <button id="screenPreview" class="secondary">画面でプレビュー</button>
+        </div>
+        <div class="row">
+          <label>テーマ</label>
+          <div class="control presets" id="themePresets"></div>
+        </div>
+        <div class="row">
+          <label for="fontFamily">フォント</label>
+          <div class="control">
+            <input id="fontFamily" type="text" list="fontList" spellcheck="false" />
+            <datalist id="fontList">
+              <option value="system-ui"></option>
+              <option value="Segoe UI"></option>
+              <option value="Yu Gothic UI"></option>
+              <option value="Meiryo"></option>
+              <option value="Hiragino Sans"></option>
+              <option value="Helvetica Neue"></option>
+              <option value="Arial"></option>
+              <option value="Consolas"></option>
+              <option value="Menlo"></option>
+              <option value="monospace"></option>
+            </datalist>
+          </div>
+        </div>
+        <div class="row">
+          <label for="fontSize">文字サイズ</label>
+          <div class="control range"><input id="fontSize" type="range" min="12" max="120" step="1" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="fontWeight">文字の太さ</label>
+          <div class="control">
+            <select id="fontWeight">
+              <option value="400">標準</option>
+              <option value="500">中</option>
+              <option value="600">やや太い</option>
+              <option value="700">太い</option>
+              <option value="800">極太</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <label>色</label>
+          <div class="control colors">
+            <label>文字 <input id="textColor" type="color" /></label>
+            <label>背景 <input id="bgColor" type="color" /></label>
+            <label>枠線 <input id="borderColor" type="color" /></label>
+          </div>
+        </div>
+        <div class="row">
+          <label for="bgOpacity">背景の不透明度</label>
+          <div class="control range"><input id="bgOpacity" type="range" min="0" max="1" step="0.05" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="borderRadius">角丸</label>
+          <div class="control range"><input id="borderRadius" type="range" min="0" max="40" step="1" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="borderWidth">枠線の太さ</label>
+          <div class="control range"><input id="borderWidth" type="range" min="0" max="8" step="1" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="shadow">影</label>
+          <div class="control"><label class="check"><input id="shadow" type="checkbox" /> 影をつける</label></div>
+        </div>
+        <div class="row">
+          <label for="animation">アニメーション</label>
+          <div class="control">
+            <select id="animation">
+              <option value="fade">フェード</option>
+              <option value="slide">スライド</option>
+              <option value="none">なし</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- 位置 -->
+      <section id="tab-position" class="tab">
+        <h1>位置</h1>
+        <div class="row">
+          <label>表示位置</label>
+          <div class="control">
+            <div class="grid9" id="presetGrid"></div>
+            <div class="custom-note" id="customNote" hidden>
+              ドラッグで配置した位置を使用中
+              <button id="resetPosition" class="link">プリセットに戻す</button>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <label>ドラッグで配置</label>
+          <div class="control">
+            <button id="arrange" class="secondary">配置モードを開始</button>
+            <p class="hint">開始すると表示領域が青い枠で表示されます。ドラッグで動かし、「配置を確定」を押してください。</p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="monitor">表示するモニター</label>
+          <div class="control">
+            <select id="monitor"></select>
+            <p class="hint">ドラッグで配置した位置を使用中はこの設定は使われません。</p>
+          </div>
+        </div>
+        <div class="row">
+          <label>画面端からの余白</label>
+          <div class="control inline">
+            <label>横 <input id="offsetX" type="number" min="0" max="1000" step="1" /> px</label>
+            <label>縦 <input id="offsetY" type="number" min="0" max="1000" step="1" /> px</label>
+          </div>
+        </div>
+      </section>
+
+      <!-- プライバシー -->
+      <section id="tab-privacy" class="tab">
+        <h1>プライバシー</h1>
+        <p class="info">キー入力はこの PC の画面に表示するだけで、保存や送信は一切行いません。</p>
+        <div class="row">
+          <label for="excludeInput">除外するアプリ</label>
+          <div class="control">
+            <p class="hint" id="excludeHint"></p>
+            <div class="inline">
+              <input id="excludeInput" type="text" list="runningApps" spellcheck="false" />
+              <datalist id="runningApps"></datalist>
+              <button id="excludeAdd">追加</button>
+              <button id="refreshApps" class="secondary" title="実行中のアプリ一覧を更新">↻</button>
+            </div>
+            <ul class="list" id="excludeList"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ホットキー -->
+      <section id="tab-hotkey" class="tab">
+        <h1>ホットキー</h1>
+        <div class="row">
+          <label>表示の一時停止 / 再開</label>
+          <div class="control">
+            <div class="inline">
+              <kbd id="hotkeyLabel" class="hotkey"></kbd>
+              <button id="hotkeyRecord" class="secondary">変更</button>
+              <button id="hotkeyReset" class="link">初期値に戻す</button>
+            </div>
+            <p class="hint" id="hotkeyHint">「変更」を押してから、新しい組み合わせを押してください（修飾キー + キー）。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 情報 -->
+      <section id="tab-about" class="tab">
+        <h1>情報</h1>
+        <dl class="about">
+          <dt>バージョン</dt><dd id="version"></dd>
+          <dt>設定ファイル</dt><dd><code id="configPath"></code></dd>
+          <dt>ライセンス</dt><dd>MIT</dd>
+        </dl>
+        <button id="resetAll" class="danger">初期設定に戻す</button>
+        <p class="hint">表示位置とモニター以外の設定を初期値に戻します。</p>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="/src/settings.ts"></script>
+  </body>
+</html>

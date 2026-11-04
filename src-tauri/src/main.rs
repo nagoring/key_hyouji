@@ -1,50 +1,59 @@
 // リリースビルドで Windows のコンソールウィンドウを出さない
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod commands;
 mod overlay;
 mod state;
 mod tray;
+mod windows;
 
 use key_core::config::Config;
 use key_core::hook::{self, HookError};
 use key_core::{Aggregator, KeyEvent};
-use state::{AppState, HookStatus, OverlayState};
+use state::{AppState, HookStatus};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 pub const OVERLAY: &str = "overlay";
-
-fn pause_shortcut() -> Shortcut {
-    // 仕様 C-02: Ctrl+Alt+Shift+K / ⌃⌥⇧K
-    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT), Code::KeyK)
-}
-
-#[tauri::command]
-fn get_overlay_state(app: AppHandle) -> OverlayState {
-    app.state::<AppState>().overlay_state()
-}
 
 fn main() {
     tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, shortcut, event| {
-                    if event.state == ShortcutState::Pressed && *shortcut == pause_shortcut() {
+                .with_handler(|app, _shortcut, event| {
+                    // 登録するのは一時停止ホットキーのみ（C-02）
+                    if event.state == ShortcutState::Pressed {
                         state::toggle_paused(app);
                     }
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![get_overlay_state])
+        .invoke_handler(tauri::generate_handler![
+            commands::get_overlay_state,
+            commands::get_config,
+            commands::set_config,
+            commands::reset_config,
+            commands::list_monitors,
+            commands::list_running_apps,
+            commands::set_arranging,
+            commands::is_arranging,
+            commands::reset_position,
+            commands::show_preview,
+            commands::get_app_info,
+            commands::get_permission_status,
+            commands::request_permission,
+            commands::open_privacy_settings,
+            commands::restart_app,
+        ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.handle().set_activation_policy(tauri::ActivationPolicy::Accessory)?;
 
             let config_dir = app.path().app_config_dir()?;
-            let config = Config::load(&config_dir);
+            let config = Config::load(&config_dir).sanitized();
             let aggregator = Aggregator::new(config.aggregator_config());
             app.manage(AppState::new(config_dir, config, aggregator));
 
@@ -57,9 +66,12 @@ fn main() {
             window.show()?;
 
             tray::create(app.handle())?;
+            state::register_initial_hotkey(app.handle());
+            overlay::spawn_follow(app.handle().clone());
 
-            if let Err(e) = app.global_shortcut().register(pause_shortcut()) {
-                log::warn!("failed to register pause shortcut: {e}");
+            // macOS: 入力監視の権限が無ければ案内画面を出す
+            if !hook::has_permission() {
+                windows::open_onboarding(app.handle());
             }
 
             let (tx, rx) = channel::<KeyEvent>();
@@ -67,8 +79,16 @@ fn main() {
             spawn_hook(app.handle().clone(), tx);
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running key_hyouji");
+        .build(tauri::generate_context!())
+        .expect("error while building key_hyouji")
+        .run(|_app, event| {
+            // 設定画面などを閉じてもトレイ常駐を続ける
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
+        });
 }
 
 /// フックから届いたキーイベントを表示アイテムに変換してオーバーレイへ送る。
@@ -80,6 +100,10 @@ fn spawn_pipeline(app: AppHandle, rx: Receiver<KeyEvent>) {
             for ev in rx {
                 let state = app.state::<AppState>();
                 if state.is_paused() {
+                    continue;
+                }
+                if state.foreground_excluded() {
+                    state.aggregator.lock().unwrap().reset();
                     continue;
                 }
                 let now_ms = started.elapsed().as_millis() as u64;

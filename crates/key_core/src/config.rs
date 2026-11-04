@@ -113,7 +113,74 @@ impl Position {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// 表示するモニター（W-05）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum MonitorTarget {
+    /// メインモニター
+    Primary,
+    /// マウスカーソルのあるモニター（追従）
+    Cursor,
+    /// アクティブウィンドウのあるモニター（追従）
+    Active,
+    /// 名前で固定
+    Fixed { name: String },
+}
+
+impl MonitorTarget {
+    /// 状況に応じてモニターが変わるか
+    pub fn follows(&self) -> bool {
+        matches!(self, MonitorTarget::Cursor | MonitorTarget::Active)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Animation {
+    Fade,
+    Slide,
+    None,
+}
+
+/// 外観（2.3）。プリセットは設定画面側で各値に展開し、`preset` は表示用のラベルとして持つ。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Theme {
+    /// "dark" | "light" | "keycap" | "minimal" | "custom"
+    pub preset: String,
+    pub font_family: String,
+    pub font_size: f64,
+    pub font_weight: u32,
+    pub text_color: String,
+    pub bg_color: String,
+    pub bg_opacity: f64,
+    pub border_radius: f64,
+    pub border_width: f64,
+    pub border_color: String,
+    pub shadow: bool,
+    pub animation: Animation,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            preset: "dark".into(),
+            font_family: "system-ui".into(),
+            font_size: 32.0,
+            font_weight: 600,
+            text_color: "#ffffff".into(),
+            bg_color: "#000000".into(),
+            bg_opacity: 0.7,
+            border_radius: 12.0,
+            border_width: 0.0,
+            border_color: "#ffffff".into(),
+            shadow: true,
+            animation: Animation::Fade,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
     pub display_mode: DisplayMode,
@@ -127,7 +194,15 @@ pub struct Config {
     /// 画面端からの余白（論理ピクセル）
     pub offset_x: f64,
     pub offset_y: f64,
+    pub monitor: MonitorTarget,
+    pub theme: Theme,
+    /// 除外アプリ（P-03）。Windows は実行ファイル名（例: `KeePass.exe`）、macOS はアプリ名
+    pub excluded_apps: Vec<String>,
+    /// 一時停止ホットキー（例: `Control+Alt+Shift+KeyK`）
+    pub pause_hotkey: String,
 }
+
+pub const DEFAULT_PAUSE_HOTKEY: &str = "Control+Alt+Shift+KeyK";
 
 impl Default for Config {
     fn default() -> Self {
@@ -142,8 +217,17 @@ impl Default for Config {
             position: Position::Preset { preset: Preset::BottomCenter },
             offset_x: 40.0,
             offset_y: 80.0,
+            monitor: MonitorTarget::Primary,
+            theme: Theme::default(),
+            excluded_apps: Vec::new(),
+            pause_hotkey: DEFAULT_PAUSE_HOTKEY.into(),
         }
     }
+}
+
+fn is_hex_color(s: &str) -> bool {
+    let hex = s.strip_prefix('#').unwrap_or("");
+    matches!(hex.len(), 3 | 6 | 8) && hex.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 impl Config {
@@ -171,6 +255,64 @@ impl Config {
         }
     }
 
+    /// 値を有効範囲に収める（設定画面や手編集の不正値対策）。
+    pub fn sanitized(mut self) -> Config {
+        let d = Config::default();
+        self.merge_typing_ms = self.merge_typing_ms.clamp(200, 5000);
+        self.display_duration_ms = self.display_duration_ms.clamp(500, 15000);
+        self.fade_duration_ms = self.fade_duration_ms.clamp(0, 3000);
+        self.max_items = self.max_items.clamp(1, 10);
+        self.offset_x = clamp_f(self.offset_x, 0.0, 1000.0, d.offset_x);
+        self.offset_y = clamp_f(self.offset_y, 0.0, 1000.0, d.offset_y);
+
+        let t = &mut self.theme;
+        let dt = Theme::default();
+        t.font_size = clamp_f(t.font_size, 10.0, 160.0, dt.font_size);
+        t.font_weight = (t.font_weight.clamp(100, 900) / 100) * 100;
+        t.bg_opacity = clamp_f(t.bg_opacity, 0.0, 1.0, dt.bg_opacity);
+        t.border_radius = clamp_f(t.border_radius, 0.0, 100.0, dt.border_radius);
+        t.border_width = clamp_f(t.border_width, 0.0, 20.0, dt.border_width);
+        for (v, def) in [
+            (&mut t.text_color, &dt.text_color),
+            (&mut t.bg_color, &dt.bg_color),
+            (&mut t.border_color, &dt.border_color),
+        ] {
+            if !is_hex_color(v) {
+                *v = def.clone();
+            }
+        }
+        // フォント名は CSS に入るので安全な文字だけ許可
+        let font_ok = !t.font_family.trim().is_empty()
+            && t.font_family.len() <= 200
+            && t.font_family.chars().all(|c| c.is_alphanumeric() || " -_,'\"".contains(c));
+        if !font_ok {
+            t.font_family = dt.font_family;
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        self.excluded_apps = self
+            .excluded_apps
+            .into_iter()
+            .map(|a| a.trim().to_owned())
+            .filter(|a| !a.is_empty() && seen.insert(a.to_lowercase()))
+            .collect();
+        if self.pause_hotkey.trim().is_empty() {
+            self.pause_hotkey = d.pause_hotkey;
+        }
+        self
+    }
+
+    /// フォアグラウンドのアプリが除外対象か。
+    /// Windows は `.exe` の有無を区別せず、大文字小文字を無視して比較する。
+    pub fn is_excluded(&self, app_name: &str) -> bool {
+        fn norm(s: &str) -> String {
+            let s = s.trim().to_lowercase();
+            s.strip_suffix(".exe").map(str::to_owned).unwrap_or(s)
+        }
+        let name = norm(app_name);
+        !name.is_empty() && self.excluded_apps.iter().any(|a| norm(a) == name)
+    }
+
     pub fn aggregator_config(&self) -> crate::AggregatorConfig {
         crate::AggregatorConfig {
             display_mode: self.display_mode,
@@ -183,9 +325,65 @@ impl Config {
     }
 }
 
+fn clamp_f(v: f64, min: f64, max: f64, default: f64) -> f64 {
+    if v.is_finite() {
+        v.clamp(min, max)
+    } else {
+        default
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitize_clamps_and_rejects_bad_values() {
+        let mut c = Config {
+            max_items: 0,
+            display_duration_ms: 10,
+            excluded_apps: vec![" KeePass.exe ".into(), "keepass.EXE".into(), "".into()],
+            pause_hotkey: " ".into(),
+            ..Default::default()
+        };
+        c.theme.font_size = f64::NAN;
+        c.theme.bg_opacity = 3.0;
+        c.theme.text_color = "red; background: url(x)".into();
+        c.theme.font_family = "x}</style>".into();
+        c.theme.font_weight = 650;
+        let c = c.sanitized();
+        assert_eq!(c.max_items, 1);
+        assert_eq!(c.display_duration_ms, 500);
+        assert_eq!(c.excluded_apps, vec!["KeePass.exe".to_string()]);
+        assert_eq!(c.pause_hotkey, DEFAULT_PAUSE_HOTKEY);
+        assert_eq!(c.theme.font_size, 32.0);
+        assert_eq!(c.theme.bg_opacity, 1.0);
+        assert_eq!(c.theme.text_color, "#ffffff");
+        assert_eq!(c.theme.font_family, "system-ui");
+        assert_eq!(c.theme.font_weight, 600);
+        // 正しい値はそのまま
+        let mut ok = Config::default();
+        ok.theme.font_family = "'Hiragino Sans', Meiryo, sans-serif".into();
+        ok.theme.bg_color = "#12345678".into();
+        assert_eq!(ok.clone().sanitized(), ok);
+    }
+
+    #[test]
+    fn excluded_app_matching() {
+        let c = Config { excluded_apps: vec!["KeePass.exe".into(), "1Password".into()], ..Default::default() };
+        assert!(c.is_excluded("keepass.exe"));
+        assert!(c.is_excluded("KeePass"));
+        assert!(c.is_excluded("1password"));
+        assert!(!c.is_excluded("notepad.exe"));
+        assert!(!c.is_excluded(""));
+    }
+
+    #[test]
+    fn monitor_target_serde() {
+        let c: Config = serde_json::from_str(r#"{"monitor":{"type":"fixed","name":"DELL U2720Q"}}"#).unwrap();
+        assert_eq!(c.monitor, MonitorTarget::Fixed { name: "DELL U2720Q".into() });
+        assert_eq!(serde_json::to_string(&MonitorTarget::Cursor).unwrap(), r#"{"type":"cursor"}"#);
+    }
 
     #[test]
     fn roundtrip_and_partial() {

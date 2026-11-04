@@ -1,8 +1,10 @@
 //! システムトレイ / メニューバー常駐（C-01）。
 
 use crate::state::{self, AppState, HookStatus};
+use crate::windows;
 use key_core::config::{Position, Preset};
-use key_core::DisplayMode;
+use key_core::format::hotkey_label;
+use key_core::{DisplayMode, Platform};
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
@@ -18,8 +20,8 @@ pub struct TrayMenu {
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    let pause_accel = if cfg!(target_os = "macos") { "⌃⌥⇧K" } else { "Ctrl+Alt+Shift+K" };
-    let pause = CheckMenuItem::with_id(app, "pause", format!("一時停止（{pause_accel}）"), true, false, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "設定…", true, None::<&str>)?;
+    let pause = CheckMenuItem::with_id(app, "pause", "一時停止", true, false, None::<&str>)?;
 
     let mode_all = CheckMenuItem::with_id(app, "mode:all", "すべてのキー", true, true, None::<&str>)?;
     let mode_shortcuts = CheckMenuItem::with_id(app, "mode:shortcuts", "ショートカットのみ", true, false, None::<&str>)?;
@@ -44,9 +46,9 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let sep2 = PredefinedMenuItem::separator(app)?;
 
     #[cfg(target_os = "macos")]
-    let privacy = MenuItem::with_id(app, "open-privacy", "入力監視の設定を開く…", true, None::<&str>)?;
+    let privacy = MenuItem::with_id(app, "onboarding", "入力監視の許可について…", true, None::<&str>)?;
 
-    let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&pause, &sep1, &mode_menu, &pos_menu];
+    let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&settings, &pause, &sep1, &mode_menu, &pos_menu];
     #[cfg(target_os = "macos")]
     items.push(&privacy);
     items.push(&sep2);
@@ -77,7 +79,8 @@ fn handle_menu(app: &AppHandle, id: &str) {
             let on = !app.state::<AppState>().is_arranging();
             state::set_arranging(app, on);
         }
-        "open-privacy" => open_privacy_settings(),
+        "settings" => windows::open_settings(app),
+        "onboarding" => windows::open_onboarding(app),
         "quit" => app.exit(0),
         _ => {
             if let Some(p) = id.strip_prefix("pos:").and_then(Preset::from_id) {
@@ -87,26 +90,18 @@ fn handle_menu(app: &AppHandle, id: &str) {
     }
 }
 
-fn open_privacy_settings() {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
-            .spawn();
-    }
-}
-
 /// メニューのチェック状態とツールチップを現在の状態に合わせる。
 /// （クリックでチェックが自動反転するため、操作後は必ず呼ぶ）
 pub fn sync(app: &AppHandle) {
     let Some(menu) = app.try_state::<TrayMenu>() else { return };
     let s = app.state::<AppState>();
-    let (mode, position) = {
+    let (mode, position, hotkey) = {
         let c = s.config.lock().unwrap();
-        (c.display_mode, c.position)
+        (c.display_mode, c.position, c.pause_hotkey.clone())
     };
     let paused = s.is_paused();
     let _ = menu.pause.set_checked(paused);
+    let _ = menu.pause.set_text(format!("一時停止（{}）", hotkey_label(&hotkey, Platform::current())));
     let _ = menu.mode_all.set_checked(mode == DisplayMode::All);
     let _ = menu.mode_shortcuts.set_checked(mode == DisplayMode::ShortcutsOnly);
     for (p, item) in &menu.presets {

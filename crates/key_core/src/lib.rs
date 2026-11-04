@@ -8,6 +8,7 @@
 pub mod aggregator;
 pub mod config;
 pub mod event;
+pub mod foreground;
 pub mod format;
 pub mod hook;
 

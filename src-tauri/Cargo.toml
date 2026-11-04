@@ -1,6 +1,6 @@
 [package]
 name = "key_hyouji"
-version = "0.1.0"
+version = "0.2.0"
 description = "Keystroke display overlay for Windows and macOS"
 edition = "2021"
 license = "MIT"

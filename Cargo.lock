@@ -1670,7 +1670,7 @@ dependencies = [
 
 [[package]]
 name = "key_core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "log",
  "serde",
@@ -1680,7 +1680,7 @@ dependencies = [
 
 [[package]]
 name = "key_hyouji"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "key_core",
  "log",

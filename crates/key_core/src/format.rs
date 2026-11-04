@@ -108,9 +108,49 @@ fn named_label(n: NamedKey, platform: Platform) -> std::borrow::Cow<'static, str
     Borrowed(s)
 }
 
+/// ホットキー文字列（例: `Control+Alt+Shift+KeyK`）を表示用に整形する。
+/// Mac: `⌃⌥⇧K` / Windows: `Ctrl+Alt+Shift+K`
+pub fn hotkey_label(spec: &str, platform: Platform) -> String {
+    let mac = platform == Platform::Mac;
+    let parts: Vec<String> = spec
+        .split('+')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let upper = p.to_ascii_uppercase();
+            let s = match upper.as_str() {
+                "CONTROL" | "CTRL" => if mac { "⌃" } else { "Ctrl" },
+                "ALT" | "OPTION" => if mac { "⌥" } else { "Alt" },
+                "SHIFT" => if mac { "⇧" } else { "Shift" },
+                "SUPER" | "CMD" | "COMMAND" | "META" => if mac { "⌘" } else { "Win" },
+                "CMDORCTRL" | "COMMANDORCONTROL" | "CMDORCONTROL" | "COMMANDORCTRL" => {
+                    if mac { "⌘" } else { "Ctrl" }
+                }
+                _ => {
+                    let key = p
+                        .strip_prefix("Key")
+                        .or_else(|| p.strip_prefix("Digit"))
+                        .unwrap_or(p);
+                    return key.to_uppercase();
+                }
+            };
+            s.to_owned()
+        })
+        .collect();
+    parts.join(if mac { "" } else { "+" })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hotkey_labels() {
+        assert_eq!(hotkey_label("Control+Alt+Shift+KeyK", Platform::Mac), "⌃⌥⇧K");
+        assert_eq!(hotkey_label("Control+Alt+Shift+KeyK", Platform::Windows), "Ctrl+Alt+Shift+K");
+        assert_eq!(hotkey_label("Super+Digit1", Platform::Windows), "Win+1");
+        assert_eq!(hotkey_label("Shift+F5", Platform::Mac), "⇧F5");
+    }
 
     fn m(ctrl: bool, alt: bool, shift: bool, meta: bool) -> Modifiers {
         Modifiers { ctrl, alt, shift, meta }

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>key_hyouji へようこそ</title>
+    <link rel="stylesheet" href="/src/onboarding.css" />
+  </head>
+  <body>
+    <main>
+      <div class="hero">
+        <img src="/icon.png" alt="" width="72" height="72" />
+        <div>
+          <h1>key_hyouji へようこそ</h1>
+          <p>押したキーを画面に表示するには、macOS の「入力監視」の許可が必要です。</p>
+        </div>
+      </div>
+
+      <div id="status" class="status"></div>
+
+      <ol class="steps" id="steps">
+        <li>下の「システム設定を開く」を押します。</li>
+        <li>「入力監視」の一覧で <b>key_hyouji</b> をオンにします（一覧に無い場合は「＋」から追加）。</li>
+        <li>この画面に戻ると自動で確認します。</li>
+      </ol>
+
+      <p class="note">
+        キー入力は画面に表示するだけで、保存や送信は一切行いません。
+        パスワード入力欄などの安全な入力中は、macOS によりキー入力が届かないため表示されません。
+      </p>
+
+      <div class="actions">
+        <button id="openSettings">システム設定を開く</button>
+        <button id="restart" class="secondary" hidden>key_hyouji を再起動</button>
+        <button id="close" class="secondary" hidden>閉じる</button>
+      </div>
+    </main>
+    <script type="module" src="/src/onboarding.ts"></script>
+  </body>
+</html>

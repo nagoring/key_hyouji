@@ -1,19 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { applyThemeVars, type HookStatus, type Theme } from "./types";
 
 type DisplayItem = { id: number; kind: "text" | "combo"; label: string; count: number };
 type Update = { type: "new" | "update"; item: DisplayItem };
 type Layout = { vertical: "top" | "middle" | "bottom"; horizontal: "left" | "center" | "right"; arranging: boolean };
-type Settings = { displayDurationMs: number; fadeDurationMs: number; maxItems: number };
-type HookStatus = { state: "starting" | "running" | "needPermission" | "error"; message?: string };
+type Settings = { displayDurationMs: number; fadeDurationMs: number; maxItems: number; theme: Theme };
 type OverlayState = { layout: Layout; settings: Settings; paused: boolean; hook: HookStatus };
 
 const stack = document.getElementById("stack")!;
 const frame = document.getElementById("frame")!;
 const notice = document.getElementById("notice")!;
 
-let settings: Settings = { displayDurationMs: 2000, fadeDurationMs: 300, maxItems: 3 };
+let settings: Pick<Settings, "displayDurationMs" | "fadeDurationMs" | "maxItems"> = {
+  displayDurationMs: 2000,
+  fadeDurationMs: 300,
+  maxItems: 3,
+};
 let hook: HookStatus = { state: "starting" };
 let noticeTimer: number | undefined;
 
@@ -73,7 +77,12 @@ function applyLayout(layout: Layout) {
 
 function applySettings(s: Settings) {
   settings = s;
-  document.documentElement.style.setProperty("--fade-ms", `${s.fadeDurationMs}ms`);
+  const root = document.documentElement;
+  root.style.setProperty("--fade-ms", `${s.fadeDurationMs}ms`);
+  applyThemeVars(root, s.theme);
+  // 上限が減った場合に溢れた分を消す
+  const overflow = entries.size - s.maxItems;
+  if (overflow > 0) [...entries.keys()].slice(0, overflow).forEach(removeEntry);
 }
 
 function renderNotice(text: string | null, warn = false, durationMs?: number) {
@@ -100,7 +109,7 @@ function renderHookNotice() {
       );
       break;
     case "error":
-      renderNotice(`キー入力の取得を開始できませんでした: ${hook.message ?? ""}`, true);
+      renderNotice(`キー入力の取得を開始できませんでした: ${hook.message}`, true);
       break;
     default:
       renderNotice(null);
