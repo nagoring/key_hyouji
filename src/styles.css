@@ -1,0 +1,168 @@
+:root {
+  --text: #ffffff;
+  --bg: rgba(0, 0, 0, 0.7);
+  --font-size: 32px;
+  --font-family: system-ui;
+  --font-weight: 600;
+  --radius: 12px;
+  --border: none;
+  --fade-ms: 300ms;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  font-family: var(--font-family), system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+}
+
+/* キー表示の積み上げ領域 */
+.stack {
+  position: absolute;
+  inset: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+.stack.v-top { flex-direction: column-reverse; justify-content: flex-end; } /* 新しいものを上端に */
+.stack.v-middle { justify-content: center; }
+.stack.v-bottom { justify-content: flex-end; }
+.stack.h-left { align-items: flex-start; }
+.stack.h-center { align-items: center; }
+.stack.h-right { align-items: flex-end; }
+
+.key {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.25em 0.7em;
+  border-radius: var(--radius);
+  border: var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--font-size);
+  font-weight: var(--font-weight);
+  line-height: 1.3;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  transition:
+    opacity var(--fade-ms) ease,
+    transform var(--fade-ms) ease;
+  animation: pop-in 120ms ease-out;
+}
+.key .count:empty {
+  display: none;
+}
+.key .count {
+  font-size: 0.7em;
+  font-weight: 500;
+  opacity: 0.8;
+}
+.key.leaving {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.key.bump {
+  animation: bump 120ms ease-out;
+}
+
+/* テーマ */
+[data-shadow="false"] .key {
+  box-shadow: none;
+}
+[data-preset="keycap"] .key {
+  box-shadow:
+    inset 0 -0.12em 0 rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+  padding-bottom: 0.32em;
+}
+[data-preset="keycap"][data-shadow="false"] .key {
+  box-shadow: inset 0 -0.12em 0 rgba(0, 0, 0, 0.18);
+}
+[data-preset="minimal"] .key {
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.9),
+    0 0 10px rgba(0, 0, 0, 0.6);
+}
+
+/* 配信用モード: 影はクロマキーの縁が汚れるので消す */
+[data-chroma="true"] .key {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+/* アニメーション */
+[data-animation="slide"] .key {
+  animation: slide-in 160ms ease-out;
+}
+[data-animation="slide"] .key.leaving {
+  transform: translateY(20px);
+}
+[data-animation="none"] .key,
+[data-animation="none"] .key.bump {
+  animation: none;
+  transition: none;
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes bump {
+  50% { transform: scale(1.06); }
+}
+
+/* 一時停止 / 権限エラー等の通知 */
+.notice {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 48px);
+  padding: 8px 16px;
+  border-radius: 10px;
+  background: rgba(30, 30, 30, 0.85);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: center;
+  white-space: pre-line;
+  pointer-events: none;
+}
+.notice.warn { background: rgba(160, 60, 0, 0.9); }
+
+/* 配置モード */
+.frame {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 3px dashed rgba(80, 160, 255, 0.95);
+  border-radius: 12px;
+  background: rgba(80, 160, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 15px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  cursor: move;
+}
+.frame[hidden],
+.notice[hidden] {
+  display: none;
+}

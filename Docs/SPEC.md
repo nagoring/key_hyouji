@@ -39,7 +39,7 @@
 | F-07 | 特殊キーは記号/名称で表示（Enter `⏎`、Backspace `⌫`、Tab `⇥`、Esc、矢印 `← ↑ → ↓`、F1〜F12、Space `␣` 等） | 必須 |
 | F-08 | OSに合わせた修飾キー表記（Win: `Ctrl` `Alt` `Shift` `Win` / Mac: `⌃` `⌥` `⇧` `⌘`）。設定で文字表記にも切替可 | 必須 |
 | F-09 | 表示モード切替：①すべてのキー ②修飾キー付きのみ（ショートカットのみ） | 必須 |
-| F-10 | マウスクリック表示（左/右/中クリック、任意でカーソル位置にリング表示） | 任意（v1.1） |
+| F-10 | マウスクリック表示（左/右/中クリック、任意でカーソル位置にリング表示）。クリック表示は既定でオン、トレイメニューから切り替え可。ホイールの回転（スクロール）も向きと回数で表示可（既定でオフ、80ms 未満の連続イベントは 1 回分にまとめ、macOS の慣性スクロールは数えない） | 任意（v1.1） |
 | F-11 | IME入力中（日本語変換中）は変換確定前のキーをまとめるか、非表示にするかを選択可 | 推奨 |
 | F-12 | 修飾キー単体押下は表示しない（既定）。設定でON可 | 推奨 |
 
@@ -66,7 +66,7 @@
 | C-01 | システムトレイ（Win）/ メニューバー（Mac）に常駐。メニュー: 表示ON/OFF、一時停止、設定、終了 |
 | C-02 | グローバルホットキーで表示の一時停止/再開（既定: `Ctrl+Alt+Shift+K` / `⌃⌥⇧K`、変更可） |
 | C-03 | 設定ウィンドウ（GUI）。変更は即時プレビューに反映 |
-| C-04 | OS起動時に自動起動（ON/OFF） |
+| C-04 | OS起動時に自動起動（ON/OFF）。Windows はレジストリ（`Run` キー）を使わず、スタートアップフォルダ（`shell:startup`）へのショートカット作成で実現する。macOS はログイン項目（`SMAppService`） |
 | C-05 | 設定のインポート/エクスポート（JSON） |
 | C-06 | UI言語: 日本語 / 英語（OS言語に追従、手動切替可） |
 
@@ -103,7 +103,7 @@
 | バックエンド | **Rust** | OSネイティブAPI（キーフック）を直接扱える |
 | フロントエンド | TypeScript + React（または Svelte）+ Vite | オーバーレイ描画・設定画面 |
 | 設定保存 | JSON（`tauri-plugin-store`） | |
-| 自動起動 | `tauri-plugin-autostart` | |
+| 自動起動 | Windows: スタートアップフォルダにショートカット作成（自前実装）/ macOS: `SMAppService` | `tauri-plugin-autostart` は Windows でレジストリを使うため不採用 |
 | ホットキー | `tauri-plugin-global-shortcut` | |
 | 更新 | `tauri-plugin-updater`（任意ON） | |
 
@@ -183,7 +183,7 @@
     "borderRadius": 12,
     "animation": "fade"
   },
-  "mouse": { "showClicks": false, "showRing": false },
+  "mouse": { "showClicks": true, "showRing": false, "showScroll": false },
   "excludedApps": [],
   "pauseHotkey": "CmdOrCtrl+Alt+Shift+K",
   "autoStart": false,
@@ -193,8 +193,8 @@
 ```
 
 保存場所:
-- Windows: `%APPDATA%\key_hyouji\settings.json`
-- macOS: `~/Library/Application Support/key_hyouji/settings.json`
+- Windows: `%APPDATA%\com.nagoring.keyhyouji\settings.json`
+- macOS: `~/Library/Application Support/com.nagoring.keyhyouji/settings.json`
 
 ---
 
@@ -217,8 +217,15 @@
 
 | OS | 形式 | 署名 |
 |---|---|---|
-| Windows | `.msi` / `.exe`（NSIS） | Authenticode コード署名 |
+| Windows | **ポータブル版 `key_hyouji.exe`（インストーラーなし）** | Authenticode コード署名 |
 | macOS | `.dmg`（Universal Binary: arm64 + x86_64） | Developer ID 署名 + Notarization |
+
+### Windows: レジストリを使わない方針
+- MSI / NSIS インストーラーはアンインストール情報やインストール先をレジストリに書き込むため**採用しない**（`src-tauri/tauri.windows.conf.json` でバンドルを無効化）。
+- 配布物は exe 単体。任意のフォルダに置いて実行し、削除はファイル削除のみ。
+- アプリ自身もレジストリを読み書きしない。保存するのは設定ファイル（`%APPDATA%\com.nagoring.keyhyouji\`）と WebView2 のデータ（`%LOCALAPPDATA%\com.nagoring.keyhyouji\`）のみ。完全に消す場合はこの 2 フォルダも削除する。
+- 実行には WebView2 ランタイムが必要（Windows 11 は標準搭載、Windows 10 も Edge 経由でほぼ導入済み）。未導入環境向けに、ランタイム同梱版（`webviewInstallMode: fixedRuntime`、配布サイズ増）を将来検討。
+- OS 自体がトレイアイコン設定などをレジストリに記録することはアプリ側では制御できない。
 
 - CI: GitHub Actions（`tauri-action`）で Windows / macOS をマトリクスビルド、タグ push で Release 作成。
 
@@ -240,17 +247,35 @@
 
 ## 10. マイルストーン
 
-| フェーズ | 内容 |
-|---|---|
-| v0.1 (MVP) | F-01〜F-08、オーバーレイ（W-01〜W-04）、トレイ、一時停止、P-01 |
-| v0.2 | 設定GUI、テーマ、マルチモニター、除外アプリ、macOSオンボーディング |
-| v1.0 | パスワード欄対策、IME対応、署名済みインストーラー、自動起動、多言語 |
-| v1.1 | マウスクリック表示、配信用モード、設定インポート/エクスポート |
+| フェーズ | 内容 | 状況 |
+|---|---|---|
+| v0.1 (MVP) | F-01〜F-08、オーバーレイ（W-01〜W-04）、トレイ、一時停止、P-01 | 実装済み |
+| v0.2 | 設定GUI、テーマ、マルチモニター（W-05）、除外アプリ（P-03）、macOSオンボーディング、ホットキー変更（C-02） | 実装済み |
+| v1.0 | パスワード欄対策（P-02）、IME対応（F-11）、コード署名（CI）、自動起動（C-04）、多言語（C-06） | 実装済み |
+| v1.1 | マウスクリック表示（F-10）、配信用モード（2.3）、設定インポート/エクスポート（C-05） | 実装済み |
+
+### v1.1 の実装メモ
+- マウス: Windows は `WH_MOUSE_LL` を表示が有効なときだけフックスレッドに付ける（無効時はマウス移動の負荷なし）。macOS は既存の CGEventTap にボタン押下のみ追加。クリックはキーと同じ集約ロジックで表示し、連続クリックは回数を加算。ショートカットのみモードでは修飾キー付きクリックのみ表示。
+- クリック位置のリング: 96px の透過・クリック透過・最前面ウィンドウを 1 つ用意し、クリックのたびに移動してアニメーション。右クリックは二重線、中クリックは点線。
+- 配信用モード: オーバーレイ全体を指定色で塗る。クロマキーできれいに抜けるよう、キー背景は不透明にし影を消す。
+- インポート / エクスポート: `{"app": "key_hyouji", "version", "config"}` 形式の JSON。読み込み時は検証・補正し、自動起動（PC ごとの設定）は取り込まない。ファイル選択は `tauri-plugin-dialog`。
+
+### v1.0 の実装メモ
+- パスワード欄: Windows は UI Automation（`IUIAutomation::GetFocusedElement` → `CurrentIsPassword`）をキー入力ごとに確認（タイムアウト 200ms）。該当時はキーを捨て、回数を出さない「🔒」のみ表示。macOS は Secure Event Input 中に OS がキーを渡さないため、`IsSecureEventInputEnabled` を 500ms 間隔で監視して「🔒」を表示し続ける。
+- IME: Windows は最前面ウィンドウの既定 IME ウィンドウに `WM_IME_CONTROL`（開閉状態・変換モード）を問い合わせ、ネイティブモードなら IME オンと判定。macOS は現在の入力ソースが入力メソッドのモードで、ID が `.Roman` / `.ABC` で終わらなければ IME オン（TIS API はメインスレッドで実行）。結果は 200ms キャッシュ。「隠す」設定では修飾なしの文字入力のみ隠し、ショートカット・特殊キーは表示する。
+- 自動起動: Windows はスタートアップフォルダに .lnk（COM の `IShellLinkW`）、macOS は `~/Library/LaunchAgents/com.nagoring.keyhyouji.plist`。起動時に登録先を現在の実行ファイルに更新する（ポータブル exe の移動に追従）。
+- 多言語: 言語は Rust 側で決定（`auto` は `sys-locale` で OS のロケールを取得し、日本語以外は英語）。トレイ・ウィンドウタイトルは Rust、画面内は `src/i18n.ts`。切り替えは再起動なしで反映。
+- コード署名: CI で Secret が登録されている場合のみ署名（Windows: signtool、macOS: Tauri の署名・公証）。手順は `Docs/RELEASE.md`。
+
+### v0.2 の実装メモ
+- フロントエンドは React / Svelte を使わず素の TypeScript（画面が単純なため。必要になれば再検討）。
+- 除外アプリの判定: Windows は最前面ウィンドウのプロセスの実行ファイル名、macOS は最前面ウィンドウ（`CGWindowListCopyWindowInfo`、レイヤー 0）の所有アプリ名。問い合わせ結果は 300ms キャッシュ。
+- モニター追従（カーソル / アクティブウィンドウ）は 400ms 間隔で表示先モニターを確認し、変わったときだけ移動。ドラッグ配置した位置はモニター設定より優先。
+- 設定値は Rust 側で範囲・形式を検証（`Config::sanitized`）してから保存・反映。
 
 ---
 
 ## 11. 未決事項
-- フロントエンドフレームワーク（React / Svelte）の最終決定
 - アプリ名・アイコン（仮: key_hyouji）
 - ライセンス（MIT 想定）
 - 自動アップデートの配信元（GitHub Releases 想定）

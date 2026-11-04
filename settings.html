@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>key_hyouji</title>
+    <link rel="stylesheet" href="/src/settings.css" />
+  </head>
+  <body>
+    <nav class="sidebar" id="tabs">
+      <button data-tab="general" class="active" data-i18n="tab.general"></button>
+      <button data-tab="appearance" data-i18n="tab.appearance"></button>
+      <button data-tab="position" data-i18n="tab.position"></button>
+      <button data-tab="mouse" data-i18n="tab.mouse"></button>
+      <button data-tab="privacy" data-i18n="tab.privacy"></button>
+      <button data-tab="hotkey" data-i18n="tab.hotkey"></button>
+      <button data-tab="about" data-i18n="tab.about"></button>
+    </nav>
+
+    <main>
+      <!-- 一般 -->
+      <section id="tab-general" class="tab active">
+        <h1 data-i18n="tab.general"></h1>
+        <div class="row">
+          <label data-i18n="general.displayMode"></label>
+          <div class="control segmented">
+            <label><input type="radio" name="displayMode" value="all" /> <span data-i18n="general.modeAll"></span></label>
+            <label><input type="radio" name="displayMode" value="shortcutsOnly" /> <span data-i18n="general.modeShortcuts"></span></label>
+          </div>
+        </div>
+        <div class="row">
+          <label for="displayDuration" data-i18n="general.displayDuration"></label>
+          <div class="control range"><input id="displayDuration" type="range" min="0.5" max="10" step="0.5" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="fadeDuration" data-i18n="general.fadeDuration"></label>
+          <div class="control range"><input id="fadeDuration" type="range" min="0" max="1000" step="50" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="maxItems" data-i18n="general.maxItems"></label>
+          <div class="control range"><input id="maxItems" type="range" min="1" max="10" step="1" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="mergeTyping" data-i18n="general.mergeTyping"></label>
+          <div class="control range"><input id="mergeTyping" type="range" min="0.2" max="3" step="0.1" /><output></output></div>
+          <p class="hint" data-i18n="general.mergeTypingHint"></p>
+        </div>
+        <div class="row" id="modifierStyleRow">
+          <label for="modifierStyle" data-i18n="general.modifierStyle"></label>
+          <div class="control">
+            <select id="modifierStyle">
+              <option value="symbol" data-i18n="general.modifierSymbol"></option>
+              <option value="text" data-i18n="general.modifierText"></option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <label for="showModifierOnly" data-i18n="general.modifierOnly"></label>
+          <div class="control"><label class="check"><input id="showModifierOnly" type="checkbox" /> <span data-i18n="general.modifierOnlyLabel"></span></label></div>
+        </div>
+        <div class="row">
+          <label for="autoStart" data-i18n="general.autoStart"></label>
+          <div class="control"><label class="check"><input id="autoStart" type="checkbox" /> <span data-i18n="general.autoStartLabel"></span></label></div>
+          <p class="hint" id="autoStartHint"></p>
+        </div>
+        <div class="row">
+          <label for="language" data-i18n="general.language"></label>
+          <div class="control">
+            <select id="language">
+              <option value="auto" data-i18n="general.langAuto"></option>
+              <option value="ja">日本語</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- 外観 -->
+      <section id="tab-appearance" class="tab">
+        <h1 data-i18n="tab.appearance"></h1>
+        <div class="preview" id="preview">
+          <div class="preview-stage" id="previewStage">
+            <div class="key"><span class="label" id="previewLabel">⌘ ⇧ S</span><span class="count">×2</span></div>
+          </div>
+          <button id="screenPreview" class="secondary" data-i18n="appearance.screenPreview"></button>
+        </div>
+        <div class="row">
+          <label data-i18n="appearance.theme"></label>
+          <div class="control presets" id="themePresets"></div>
+        </div>
+        <div class="row">
+          <label for="fontFamily" data-i18n="appearance.font"></label>
+          <div class="control">
+            <input id="fontFamily" type="text" list="fontList" spellcheck="false" />
+            <datalist id="fontList">
+              <option value="system-ui"></option>
+              <option value="Segoe UI"></option>
+              <option value="Yu Gothic UI"></option>
+              <option value="Meiryo"></option>
+              <option value="Hiragino Sans"></option>
+              <option value="Helvetica Neue"></option>
+              <option value="Arial"></option>
+              <option value="Consolas"></option>
+              <option value="Menlo"></option>
+              <option value="monospace"></option>
+            </datalist>
+          </div>
+        </div>
+        <div class="row">
+          <label for="fontSize" data-i18n="appearance.fontSize"></label>
+          <div class="control range"><input id="fontSize" type="range" min="12" max="120" step="1" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="fontWeight" data-i18n="appearance.fontWeight"></label>
+          <div class="control">
+            <select id="fontWeight">
+              <option value="400" data-i18n="appearance.weight400"></option>
+              <option value="500" data-i18n="appearance.weight500"></option>
+              <option value="600" data-i18n="appearance.weight600"></option>
+              <option value="700" data-i18n="appearance.weight700"></option>
+              <option value="800" data-i18n="appearance.weight800"></option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <label data-i18n="appearance.colors"></label>
+          <div class="control colors">
+            <label><span data-i18n="appearance.textColor"></span> <input id="textColor" type="color" /></label>
+            <label><span data-i18n="appearance.bgColor"></span> <input id="bgColor" type="color" /></label>
+            <label><span data-i18n="appearance.borderColor"></span> <input id="borderColor" type="color" /></label>
+          </div>
+        </div>
+        <div class="row">
+          <label for="bgOpacity" data-i18n="appearance.bgOpacity"></label>
+          <div class="control range"><input id="bgOpacity" type="range" min="0" max="1" step="0.05" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="borderRadius" data-i18n="appearance.borderRadius"></label>
+          <div class="control range"><input id="borderRadius" type="range" min="0" max="40" step="1" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="borderWidth" data-i18n="appearance.borderWidth"></label>
+          <div class="control range"><input id="borderWidth" type="range" min="0" max="8" step="1" /><output></output></div>
+        </div>
+        <div class="row">
+          <label for="shadow" data-i18n="appearance.shadow"></label>
+          <div class="control"><label class="check"><input id="shadow" type="checkbox" /> <span data-i18n="appearance.shadowLabel"></span></label></div>
+        </div>
+        <div class="row">
+          <label for="chromaEnabled" data-i18n="chroma.title"></label>
+          <div class="control">
+            <label class="check"><input id="chromaEnabled" type="checkbox" /> <span data-i18n="chroma.label"></span></label>
+            <div class="inline" style="margin-top: 8px">
+              <label><span data-i18n="chroma.color"></span> <input id="chromaColor" type="color" /></label>
+            </div>
+            <p class="hint" data-i18n="chroma.hint"></p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="animation" data-i18n="appearance.animation"></label>
+          <div class="control">
+            <select id="animation">
+              <option value="fade" data-i18n="appearance.animFade"></option>
+              <option value="slide" data-i18n="appearance.animSlide"></option>
+              <option value="none" data-i18n="appearance.animNone"></option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- マウス -->
+      <section id="tab-mouse" class="tab">
+        <h1 data-i18n="tab.mouse"></h1>
+        <div class="row">
+          <label for="showClicks" data-i18n="mouse.clicks"></label>
+          <div class="control">
+            <label class="check"><input id="showClicks" type="checkbox" /> <span data-i18n="mouse.clicksLabel"></span></label>
+            <p class="hint" data-i18n="mouse.clicksHint"></p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="showScroll" data-i18n="mouse.scroll"></label>
+          <div class="control">
+            <label class="check"><input id="showScroll" type="checkbox" /> <span data-i18n="mouse.scrollLabel"></span></label>
+            <p class="hint" data-i18n="mouse.scrollHint"></p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="showRing" data-i18n="mouse.ring"></label>
+          <div class="control">
+            <label class="check"><input id="showRing" type="checkbox" /> <span data-i18n="mouse.ringLabel"></span></label>
+            <div class="inline" style="margin-top: 8px">
+              <label><span data-i18n="mouse.ringColor"></span> <input id="ringColor" type="color" /></label>
+            </div>
+            <p class="hint" data-i18n="mouse.ringHint"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 位置 -->
+      <section id="tab-position" class="tab">
+        <h1 data-i18n="tab.position"></h1>
+        <div class="row">
+          <label data-i18n="position.position"></label>
+          <div class="control">
+            <div class="grid9" id="presetGrid"></div>
+            <div class="custom-note" id="customNote" hidden>
+              <span data-i18n="position.customNote"></span>
+              <button id="resetPosition" class="link" data-i18n="position.resetPosition"></button>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <label data-i18n="position.drag"></label>
+          <div class="control">
+            <button id="arrange" class="secondary"></button>
+            <p class="hint" data-i18n="position.arrangeHint"></p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="monitor" data-i18n="position.monitor"></label>
+          <div class="control">
+            <select id="monitor"></select>
+            <p class="hint" data-i18n="position.monitorHint"></p>
+          </div>
+        </div>
+        <div class="row">
+          <label data-i18n="position.offset"></label>
+          <div class="control inline">
+            <label><span data-i18n="position.offsetX"></span> <input id="offsetX" type="number" min="0" max="1000" step="1" /> px</label>
+            <label><span data-i18n="position.offsetY"></span> <input id="offsetY" type="number" min="0" max="1000" step="1" /> px</label>
+          </div>
+        </div>
+      </section>
+
+      <!-- プライバシー -->
+      <section id="tab-privacy" class="tab">
+        <h1 data-i18n="tab.privacy"></h1>
+        <p class="info" data-i18n="privacy.info"></p>
+        <div class="row">
+          <label for="maskPassword" data-i18n="privacy.password"></label>
+          <div class="control">
+            <label class="check" id="maskPasswordWrap"><input id="maskPassword" type="checkbox" /> <span data-i18n="privacy.passwordLabel"></span></label>
+            <p class="hint" id="passwordHint"></p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="secureIndicator" data-i18n="privacy.indicator"></label>
+          <div class="control"><label class="check"><input id="secureIndicator" type="checkbox" /> <span data-i18n="privacy.indicatorLabel"></span></label></div>
+        </div>
+        <div class="row">
+          <label for="imeMode" data-i18n="privacy.ime"></label>
+          <div class="control">
+            <select id="imeMode">
+              <option value="hide" data-i18n="privacy.imeHide"></option>
+              <option value="show" data-i18n="privacy.imeShow"></option>
+            </select>
+            <p class="hint" data-i18n="privacy.imeHint"></p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="excludeInput" data-i18n="privacy.exclude"></label>
+          <div class="control">
+            <p class="hint" id="excludeHint"></p>
+            <div class="inline">
+              <input id="excludeInput" type="text" list="runningApps" spellcheck="false" />
+              <datalist id="runningApps"></datalist>
+              <button id="excludeAdd" data-i18n="privacy.add"></button>
+              <button id="refreshApps" class="secondary" data-i18n-title="privacy.refresh">↻</button>
+            </div>
+            <ul class="list" id="excludeList"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ホットキー -->
+      <section id="tab-hotkey" class="tab">
+        <h1 data-i18n="tab.hotkey"></h1>
+        <div class="row">
+          <label data-i18n="hotkey.pause"></label>
+          <div class="control">
+            <div class="inline">
+              <kbd id="hotkeyLabel" class="hotkey"></kbd>
+              <button id="hotkeyRecord" class="secondary"></button>
+              <button id="hotkeyReset" class="link" data-i18n="hotkey.reset"></button>
+            </div>
+            <p class="hint" data-i18n="hotkey.hint"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 情報 -->
+      <section id="tab-about" class="tab">
+        <h1 data-i18n="tab.about"></h1>
+        <dl class="about">
+          <dt data-i18n="about.version"></dt><dd id="version"></dd>
+          <dt data-i18n="about.configFile"></dt><dd><code id="configPath"></code></dd>
+          <dt data-i18n="about.license"></dt><dd>MIT</dd>
+        </dl>
+        <div class="row">
+          <label data-i18n="about.backup"></label>
+          <div class="control">
+            <div class="inline">
+              <button id="exportConfig" class="secondary" data-i18n="about.export"></button>
+              <button id="importConfig" class="secondary" data-i18n="about.import"></button>
+            </div>
+            <p class="hint" data-i18n="about.backupHint"></p>
+          </div>
+        </div>
+        <button id="resetAll" class="danger" data-i18n="about.resetAll"></button>
+        <p class="hint" data-i18n="about.resetHint"></p>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="/src/settings.ts"></script>
+  </body>
+</html>
