@@ -66,7 +66,7 @@
 | C-01 | システムトレイ（Win）/ メニューバー（Mac）に常駐。メニュー: 表示ON/OFF、一時停止、設定、終了 |
 | C-02 | グローバルホットキーで表示の一時停止/再開（既定: `Ctrl+Alt+Shift+K` / `⌃⌥⇧K`、変更可） |
 | C-03 | 設定ウィンドウ（GUI）。変更は即時プレビューに反映 |
-| C-04 | OS起動時に自動起動（ON/OFF） |
+| C-04 | OS起動時に自動起動（ON/OFF）。Windows はレジストリ（`Run` キー）を使わず、スタートアップフォルダ（`shell:startup`）へのショートカット作成で実現する。macOS はログイン項目（`SMAppService`） |
 | C-05 | 設定のインポート/エクスポート（JSON） |
 | C-06 | UI言語: 日本語 / 英語（OS言語に追従、手動切替可） |
 
@@ -103,7 +103,7 @@
 | バックエンド | **Rust** | OSネイティブAPI（キーフック）を直接扱える |
 | フロントエンド | TypeScript + React（または Svelte）+ Vite | オーバーレイ描画・設定画面 |
 | 設定保存 | JSON（`tauri-plugin-store`） | |
-| 自動起動 | `tauri-plugin-autostart` | |
+| 自動起動 | Windows: スタートアップフォルダにショートカット作成（自前実装）/ macOS: `SMAppService` | `tauri-plugin-autostart` は Windows でレジストリを使うため不採用 |
 | ホットキー | `tauri-plugin-global-shortcut` | |
 | 更新 | `tauri-plugin-updater`（任意ON） | |
 
@@ -193,8 +193,8 @@
 ```
 
 保存場所:
-- Windows: `%APPDATA%\key_hyouji\settings.json`
-- macOS: `~/Library/Application Support/key_hyouji/settings.json`
+- Windows: `%APPDATA%\com.nagoring.keyhyouji\settings.json`
+- macOS: `~/Library/Application Support/com.nagoring.keyhyouji/settings.json`
 
 ---
 
@@ -217,8 +217,15 @@
 
 | OS | 形式 | 署名 |
 |---|---|---|
-| Windows | `.msi` / `.exe`（NSIS） | Authenticode コード署名 |
+| Windows | **ポータブル版 `key_hyouji.exe`（インストーラーなし）** | Authenticode コード署名 |
 | macOS | `.dmg`（Universal Binary: arm64 + x86_64） | Developer ID 署名 + Notarization |
+
+### Windows: レジストリを使わない方針
+- MSI / NSIS インストーラーはアンインストール情報やインストール先をレジストリに書き込むため**採用しない**（`src-tauri/tauri.windows.conf.json` でバンドルを無効化）。
+- 配布物は exe 単体。任意のフォルダに置いて実行し、削除はファイル削除のみ。
+- アプリ自身もレジストリを読み書きしない。保存するのは設定ファイル（`%APPDATA%\com.nagoring.keyhyouji\`）と WebView2 のデータ（`%LOCALAPPDATA%\com.nagoring.keyhyouji\`）のみ。完全に消す場合はこの 2 フォルダも削除する。
+- 実行には WebView2 ランタイムが必要（Windows 11 は標準搭載、Windows 10 も Edge 経由でほぼ導入済み）。未導入環境向けに、ランタイム同梱版（`webviewInstallMode: fixedRuntime`、配布サイズ増）を将来検討。
+- OS 自体がトレイアイコン設定などをレジストリに記録することはアプリ側では制御できない。
 
 - CI: GitHub Actions（`tauri-action`）で Windows / macOS をマトリクスビルド、タグ push で Release 作成。
 

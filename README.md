@@ -20,9 +20,15 @@
 ```bash
 npm install
 npm run tauri dev      # 開発起動
-npm run tauri build    # インストーラー作成（.msi / .exe / .dmg）
+npm run tauri build    # Windows: target/release/key_hyouji.exe（単体）/ macOS: .dmg
 cargo test -p key_core # コアロジックのテスト（どの OS でも可）
 ```
+
+### Windows: レジストリを使いません
+
+インストーラーは無く、`key_hyouji.exe` を置いて実行するだけです（アプリもレジストリを読み書きしません）。
+削除は exe と、`%APPDATA%\com.nagoring.keyhyouji\`・`%LOCALAPPDATA%\com.nagoring.keyhyouji\` を消すだけです。
+WebView2 ランタイムが必要です（Windows 11 は標準搭載）。
 
 ### macOS の権限
 

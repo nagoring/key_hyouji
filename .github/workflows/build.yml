@@ -29,7 +29,8 @@ jobs:
         include:
           - os: windows-latest
             args: ""
-            bundle: target/release/bundle
+            # インストーラーは作らず（レジストリを使わないため）単体の exe を配布する
+            bundle: target/release
           - os: macos-latest
             args: "--target universal-apple-darwin"
             bundle: target/universal-apple-darwin/release/bundle
@@ -53,7 +54,6 @@ jobs:
         with:
           name: key_hyouji-${{ matrix.os }}
           path: |
-            ${{ matrix.bundle }}/msi/*.msi
-            ${{ matrix.bundle }}/nsis/*.exe
+            ${{ matrix.bundle }}/key_hyouji.exe
             ${{ matrix.bundle }}/dmg/*.dmg
           if-no-files-found: error
