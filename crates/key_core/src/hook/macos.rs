@@ -1,7 +1,9 @@
 //! macOS: CGEventTap（listen-only）。「入力監視」権限が必要。
 
 use super::HookError;
-use crate::event::{InputEvent, Key, KeyEvent, Modifiers, MouseButton, MouseEvent, NamedKey};
+use crate::event::{
+    InputEvent, Key, KeyEvent, Modifiers, MouseButton, MouseEvent, NamedKey, ScrollDirection, ScrollEvent,
+};
 use std::ffi::c_void;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
@@ -36,6 +38,7 @@ extern "C" {
     ) -> CFMachPortRef;
     fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
     fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
+    fn CGEventGetDoubleValueField(event: CGEventRef, field: u32) -> f64;
     fn CGEventGetFlags(event: CGEventRef) -> u64;
     fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
     fn CGEventKeyboardGetUnicodeString(
@@ -69,6 +72,10 @@ const K_CG_EVENT_LEFT_MOUSE_DOWN: u32 = 1;
 const K_CG_EVENT_RIGHT_MOUSE_DOWN: u32 = 3;
 const K_CG_EVENT_OTHER_MOUSE_DOWN: u32 = 25;
 const K_CG_MOUSE_EVENT_BUTTON_NUMBER: u32 = 3;
+const K_CG_EVENT_SCROLL_WHEEL: u32 = 22;
+const K_CG_SCROLL_WHEEL_EVENT_FIXED_PT_DELTA_AXIS_1: u32 = 93;
+const K_CG_SCROLL_WHEEL_EVENT_FIXED_PT_DELTA_AXIS_2: u32 = 94;
+const K_CG_SCROLL_WHEEL_EVENT_MOMENTUM_PHASE: u32 = 123;
 const K_CG_EVENT_KEY_DOWN: u32 = 10;
 const K_CG_EVENT_FLAGS_CHANGED: u32 = 12;
 const K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
@@ -110,12 +117,13 @@ pub fn start(sink: Sender<InputEvent>) -> Result<(), HookError> {
     thread::Builder::new()
         .name("key-hook".into())
         .spawn(move || unsafe {
-            // マウスはボタン押下のみ（移動は受け取らない）
+            // マウスはボタン押下とホイールのみ（移動は受け取らない）
             let mask = (1u64 << K_CG_EVENT_KEY_DOWN)
                 | (1u64 << K_CG_EVENT_FLAGS_CHANGED)
                 | (1u64 << K_CG_EVENT_LEFT_MOUSE_DOWN)
                 | (1u64 << K_CG_EVENT_RIGHT_MOUSE_DOWN)
-                | (1u64 << K_CG_EVENT_OTHER_MOUSE_DOWN);
+                | (1u64 << K_CG_EVENT_OTHER_MOUSE_DOWN)
+                | (1u64 << K_CG_EVENT_SCROLL_WHEEL);
             let tap = CGEventTapCreate(
                 K_CG_SESSION_EVENT_TAP,
                 K_CG_HEAD_INSERT_EVENT_TAP,
@@ -172,6 +180,13 @@ unsafe extern "C" fn tap_callback(
                 }
             }
         }
+        K_CG_EVENT_SCROLL_WHEEL if MOUSE.load(Ordering::Relaxed) => {
+            if let Some(ev) = translate_scroll(event) {
+                if let Some(sink) = SINK.get() {
+                    let _ = sink.send(InputEvent::Scroll(ev));
+                }
+            }
+        }
         K_CG_EVENT_LEFT_MOUSE_DOWN | K_CG_EVENT_RIGHT_MOUSE_DOWN | K_CG_EVENT_OTHER_MOUSE_DOWN
             if MOUSE.load(Ordering::Relaxed) =>
         {
@@ -205,6 +220,30 @@ unsafe fn translate_mouse(ty: u32, event: CGEventRef) -> Option<MouseEvent> {
     };
     let p = CGEventGetLocation(event);
     Some(MouseEvent { button, x: p.x, y: p.y, modifiers: modifiers_from_flags(CGEventGetFlags(event)) })
+}
+
+unsafe fn translate_scroll(event: CGEventRef) -> Option<ScrollEvent> {
+    // 指を離した後の慣性スクロールは数えない
+    if CGEventGetIntegerValueField(event, K_CG_SCROLL_WHEEL_EVENT_MOMENTUM_PHASE) != 0 {
+        return None;
+    }
+    let dy = CGEventGetDoubleValueField(event, K_CG_SCROLL_WHEEL_EVENT_FIXED_PT_DELTA_AXIS_1);
+    let dx = CGEventGetDoubleValueField(event, K_CG_SCROLL_WHEEL_EVENT_FIXED_PT_DELTA_AXIS_2);
+    // 縦横のうち大きい方の向きを採用
+    let direction = if dy.abs() >= dx.abs() {
+        if dy > 0.0 {
+            ScrollDirection::Up
+        } else if dy < 0.0 {
+            ScrollDirection::Down
+        } else {
+            return None;
+        }
+    } else if dx > 0.0 {
+        ScrollDirection::Left
+    } else {
+        ScrollDirection::Right
+    };
+    Some(ScrollEvent { direction, modifiers: modifiers_from_flags(CGEventGetFlags(event)) })
 }
 
 unsafe fn event_string(event: CGEventRef) -> Option<String> {

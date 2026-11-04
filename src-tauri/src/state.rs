@@ -98,9 +98,10 @@ impl AppState {
     /// 集約ロジックの設定（クリックの表示名は言語に合わせる）。
     pub fn aggregator_config(&self, config: &Config) -> key_core::AggregatorConfig {
         let lang = config.language.resolve(self.os_locale.as_deref());
-        let clicks = i18n::strings(lang).clicks;
+        let tr = i18n::strings(lang);
         key_core::AggregatorConfig {
-            click_labels: clicks.map(str::to_owned),
+            click_labels: tr.clicks.map(str::to_owned),
+            scroll_label: tr.scroll.to_owned(),
             ..config.aggregator_config()
         }
     }
@@ -274,7 +275,7 @@ pub fn apply_config(app: &AppHandle, new: Config) -> Result<Config, String> {
     }
     s.aggregator.lock().unwrap().set_config(s.aggregator_config(&new));
     if new.mouse != old.mouse {
-        key_core::hook::set_mouse_enabled(new.mouse.show_clicks || new.mouse.show_ring);
+        key_core::hook::set_mouse_enabled(new.mouse.any_enabled());
     }
     *s.foreground.lock().unwrap() = None;
 

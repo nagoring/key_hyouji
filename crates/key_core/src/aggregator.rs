@@ -7,7 +7,7 @@
 //!
 //! 何件まで表示するか・いつ消すかはフロントエンド側の責務。
 
-use crate::event::{Key, KeyEvent, Modifiers, MouseButton, NamedKey};
+use crate::event::{Key, KeyEvent, Modifiers, MouseButton, NamedKey, ScrollDirection};
 use crate::format::{self, ModifierStyle, Platform};
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +34,10 @@ pub struct AggregatorConfig {
     pub modifier_style: ModifierStyle,
     /// クリックの表示名（左 / 右 / 中）。言語に合わせてアプリ側で設定する
     pub click_labels: [String; 3],
+    /// スクロールの表示名（例: "スクロール" → `スクロール ↓`）
+    pub scroll_label: String,
+    /// この間隔より短いスクロールは 1 回分にまとめる（トラックパッドの細かいイベント対策）
+    pub scroll_min_interval_ms: u64,
 }
 
 impl Default for AggregatorConfig {
@@ -47,6 +51,8 @@ impl Default for AggregatorConfig {
             platform: Platform::current(),
             modifier_style: ModifierStyle::Symbol,
             click_labels: ["Click".into(), "Right Click".into(), "Middle Click".into()],
+            scroll_label: "Scroll".into(),
+            scroll_min_interval_ms: 80,
         }
     }
 }
@@ -148,6 +154,24 @@ impl Aggregator {
         };
         let key = Key::Unknown(self.config.click_labels[idx].clone());
         let label = format::combo_label(&key, modifiers, self.config.platform, self.config.modifier_style);
+        Some(self.combo(label, now_ms))
+    }
+
+    /// ホイールの回転を処理する。同じ向きの連続は回数を加算し、
+    /// `scroll_min_interval_ms` より短い間隔のイベントは数えない。
+    pub fn push_scroll(&mut self, direction: ScrollDirection, modifiers: Modifiers, now_ms: u64) -> Option<Update> {
+        if self.config.display_mode == DisplayMode::ShortcutsOnly && !modifiers.has_command() {
+            self.last = None;
+            return None;
+        }
+        let key = Key::Unknown(format!("{} {}", self.config.scroll_label, direction.arrow()));
+        let label = format::combo_label(&key, modifiers, self.config.platform, self.config.modifier_style);
+        if let Some(last) = &self.last {
+            let same = last.item.kind == DisplayKind::Combo && last.item.label == label;
+            if same && now_ms.saturating_sub(last.at_ms) < self.config.scroll_min_interval_ms {
+                return None;
+            }
+        }
         Some(self.combo(label, now_ms))
     }
 
@@ -335,6 +359,26 @@ mod tests {
         assert!(s.push_click(MouseButton::Left, Modifiers::NONE, 0).is_none());
         let cmd = Modifiers { meta: true, ..Modifiers::NONE };
         assert_eq!(label(&s.push_click(MouseButton::Left, cmd, 10).unwrap()), ("new", 1, "⌘ Click", 1));
+    }
+
+    #[test]
+    fn scrolls() {
+        let mut a = Aggregator::new(cfg(Platform::Windows));
+        let none = Modifiers::NONE;
+        assert_eq!(label(&a.push_scroll(ScrollDirection::Down, none, 0).unwrap()), ("new", 1, "Scroll ↓", 1));
+        // 細かいイベントはまとめる
+        assert!(a.push_scroll(ScrollDirection::Down, none, 30).is_none());
+        assert!(a.push_scroll(ScrollDirection::Down, none, 60).is_none());
+        assert_eq!(label(&a.push_scroll(ScrollDirection::Down, none, 100).unwrap()), ("update", 1, "Scroll ↓", 2));
+        // 向きが変わったら新しいアイテム（間隔に関係なく）
+        assert_eq!(label(&a.push_scroll(ScrollDirection::Up, none, 110).unwrap()), ("new", 2, "Scroll ↑", 1));
+        let ctrl = Modifiers { ctrl: true, ..Modifiers::NONE };
+        assert_eq!(label(&a.push_scroll(ScrollDirection::Up, ctrl, 300).unwrap()), ("new", 3, "Ctrl + Scroll ↑", 1));
+
+        let mut s = Aggregator::new(AggregatorConfig { display_mode: DisplayMode::ShortcutsOnly, ..cfg(Platform::Mac) });
+        assert!(s.push_scroll(ScrollDirection::Left, none, 0).is_none());
+        let cmd = Modifiers { meta: true, ..Modifiers::NONE };
+        assert_eq!(label(&s.push_scroll(ScrollDirection::Left, cmd, 10).unwrap()), ("new", 1, "⌘ Scroll ←", 1));
     }
 
     #[test]

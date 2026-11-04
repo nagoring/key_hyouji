@@ -108,9 +108,38 @@ pub struct MouseEvent {
     pub modifiers: Modifiers,
 }
 
+/// ホイールの回転方向。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScrollDirection {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl ScrollDirection {
+    pub fn arrow(self) -> &'static str {
+        match self {
+            ScrollDirection::Up => "↑",
+            ScrollDirection::Down => "↓",
+            ScrollDirection::Left => "←",
+            ScrollDirection::Right => "→",
+        }
+    }
+}
+
+/// ホイールの回転（スクロール）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScrollEvent {
+    pub direction: ScrollDirection,
+    pub modifiers: Modifiers,
+}
+
 /// フックから届く入力。
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputEvent {
     Key(KeyEvent),
     Mouse(MouseEvent),
+    Scroll(ScrollEvent),
 }

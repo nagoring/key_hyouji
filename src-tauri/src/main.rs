@@ -64,7 +64,7 @@ fn main() {
 
             let config_dir = app.path().app_config_dir()?;
             let config = Config::load(&config_dir).sanitized();
-            let mouse_enabled = config.mouse.show_clicks || config.mouse.show_ring;
+            let mouse_enabled = config.mouse.any_enabled();
             let state = AppState::new(config_dir, config.clone(), Aggregator::new(config.aggregator_config()));
             state.aggregator.lock().unwrap().set_config(state.aggregator_config(&config));
             app.manage(state);
@@ -146,6 +146,16 @@ fn spawn_pipeline(app: AppHandle, rx: Receiver<InputEvent>) {
                         }
                         if mouse.show_ring {
                             ring::show(&app, &m);
+                        }
+                        continue;
+                    }
+                    InputEvent::Scroll(sc) => {
+                        if state.config().mouse.show_scroll {
+                            let now_ms = started.elapsed().as_millis() as u64;
+                            let update = state.aggregator.lock().unwrap().push_scroll(sc.direction, sc.modifiers, now_ms);
+                            if let Some(update) = update {
+                                let _ = app.emit_to(OVERLAY, "keystroke", update);
+                            }
                         }
                         continue;
                     }

@@ -147,6 +147,7 @@ function render() {
   // マウス
   $<HTMLInputElement>("showClicks").checked = config.mouse.showClicks;
   $<HTMLInputElement>("showRing").checked = config.mouse.showRing;
+  $<HTMLInputElement>("showScroll").checked = config.mouse.showScroll;
   $<HTMLInputElement>("ringColor").value = config.mouse.ringColor.slice(0, 7);
   $<HTMLInputElement>("ringColor").disabled = !config.mouse.showRing;
 
@@ -382,6 +383,9 @@ function renderPlatformTexts() {
 function setupMouse() {
   $<HTMLInputElement>("showClicks").addEventListener("change", (e) =>
     change((c) => (c.mouse.showClicks = (e.target as HTMLInputElement).checked), true),
+  );
+  $<HTMLInputElement>("showScroll").addEventListener("change", (e) =>
+    change((c) => (c.mouse.showScroll = (e.target as HTMLInputElement).checked), true),
   );
   $<HTMLInputElement>("showRing").addEventListener("change", (e) => {
     change((c) => (c.mouse.showRing = (e.target as HTMLInputElement).checked), true);

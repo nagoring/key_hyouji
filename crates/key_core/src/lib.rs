@@ -16,5 +16,7 @@ pub mod ime;
 pub mod secure;
 
 pub use aggregator::{Aggregator, AggregatorConfig, DisplayItem, DisplayKind, DisplayMode, Update};
-pub use event::{InputEvent, Key, KeyEvent, Modifiers, MouseButton, MouseEvent, NamedKey};
+pub use event::{
+    InputEvent, Key, KeyEvent, Modifiers, MouseButton, MouseEvent, NamedKey, ScrollDirection, ScrollEvent,
+};
 pub use format::{ModifierStyle, Platform};

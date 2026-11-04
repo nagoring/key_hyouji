@@ -215,12 +215,21 @@ pub struct MouseConfig {
     pub show_clicks: bool,
     /// クリックした位置にリングを表示
     pub show_ring: bool,
+    /// ホイールの回転（スクロール）を表示
+    pub show_scroll: bool,
     pub ring_color: String,
+}
+
+impl MouseConfig {
+    /// マウスの入力を取得する必要があるか
+    pub fn any_enabled(&self) -> bool {
+        self.show_clicks || self.show_ring || self.show_scroll
+    }
 }
 
 impl Default for MouseConfig {
     fn default() -> Self {
-        Self { show_clicks: true, show_ring: false, ring_color: "#ffcc00".into() }
+        Self { show_clicks: true, show_ring: false, show_scroll: false, ring_color: "#ffcc00".into() }
     }
 }
 
@@ -493,7 +502,10 @@ mod tests {
     fn clicks_shown_by_default() {
         assert!(Config::default().mouse.show_clicks);
         let c: Config = serde_json::from_str(r#"{"maxItems": 3}"#).unwrap();
-        assert!(c.mouse.show_clicks && !c.mouse.show_ring);
+        assert!(c.mouse.show_clicks && !c.mouse.show_ring && !c.mouse.show_scroll);
+        assert!(c.mouse.any_enabled());
+        let off = MouseConfig { show_clicks: false, ..Default::default() };
+        assert!(!off.any_enabled());
     }
 
     #[test]

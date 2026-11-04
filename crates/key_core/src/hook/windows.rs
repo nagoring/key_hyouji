@@ -1,7 +1,9 @@
 //! Windows: 低レベルキーボードフック（WH_KEYBOARD_LL）。
 
 use super::HookError;
-use crate::event::{InputEvent, Key, KeyEvent, Modifiers, MouseButton, MouseEvent, NamedKey};
+use crate::event::{
+    InputEvent, Key, KeyEvent, Modifiers, MouseButton, MouseEvent, NamedKey, ScrollDirection, ScrollEvent,
+};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{sync_channel, Sender};
@@ -22,7 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
     PostThreadMessageW, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HC_ACTION, HHOOK,
     KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_APP, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
+    WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
 };
 
 static SINK: OnceLock<Sender<InputEvent>> = OnceLock::new();
@@ -139,10 +141,27 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     CallNextHookEx(None, code, wparam, lparam)
 }
 
-/// マウスの LL フック。移動のたびに呼ばれるので、ボタン押下以外は即座に返す。
+/// マウスの LL フック。移動のたびに呼ばれるので、ボタン押下・ホイール以外は即座に返す。
 unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 {
-        let button = match wparam.0 as u32 {
+        let msg = wparam.0 as u32;
+        if msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL {
+            let ms = &*(lparam.0 as *const MSLLHOOKSTRUCT);
+            // mouseData の上位 16 ビットが回転量（符号付き）
+            let delta = (ms.mouseData >> 16) as u16 as i16;
+            let direction = match (msg == WM_MOUSEWHEEL, delta > 0) {
+                (true, true) => Some(ScrollDirection::Up),
+                (true, false) if delta < 0 => Some(ScrollDirection::Down),
+                (false, true) => Some(ScrollDirection::Right),
+                (false, false) if delta < 0 => Some(ScrollDirection::Left),
+                _ => None,
+            };
+            if let (Some(direction), Some(sink)) = (direction, SINK.get()) {
+                let _ = sink.send(InputEvent::Scroll(ScrollEvent { direction, modifiers: current_modifiers() }));
+            }
+            return CallNextHookEx(None, code, wparam, lparam);
+        }
+        let button = match msg {
             WM_LBUTTONDOWN => Some(MouseButton::Left),
             WM_RBUTTONDOWN => Some(MouseButton::Right),
             WM_MBUTTONDOWN => Some(MouseButton::Middle),
